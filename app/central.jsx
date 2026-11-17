@@ -193,6 +193,48 @@ export function HistoricoLotes({db,tick,abrirRecorte}) {
   </section>
 }
 
+export function UsuariosAprovados({db,usuario,versao,alterar,ocupado}) {
+  const limite=10
+  const [pagina,setPagina]=useState(0)
+  const [lista,setLista]=useState([])
+  const [total,setTotal]=useState(0)
+  const [carregando,setCarregando]=useState(true)
+  const [erro,setErro]=useState('')
+  useEffect(()=>{
+    let ativo=true
+    setCarregando(true)
+    setErro('')
+    db.from('colaboradores').select('id,nome,papel',{count:'exact'}).order('nome').order('id')
+      .range(pagina*limite,(pagina+1)*limite-1)
+      .then(({data,count,error})=>{
+        if(!ativo)return
+        if(error){setErro(error.message);return}
+        setLista(data)
+        setTotal(count)
+        if(pagina>0&&pagina*limite>=count)setPagina(Math.max(0,Math.ceil(count/limite)-1))
+      }).catch(()=>{if(ativo)setErro('Não foi possível consultar os usuários.')})
+      .finally(()=>{if(ativo)setCarregando(false)})
+    return()=>{ativo=false}
+  },[db,pagina,versao])
+  return <section className="panel">
+    <h2>Usuários aprovados</h2>
+    {erro&&<p className="erro" role="alert">{erro}</p>}
+    {carregando&&<p role="status">Carregando usuários…</p>}
+    {!carregando&&!erro&&!lista.length&&<p>Nenhum usuário aprovado nesta página.</p>}
+    <div className="table"><table><thead><tr><th scope="col">Nome</th><th scope="col">Papel</th></tr></thead>
+      <tbody>{lista.map(p=><tr key={p.id}><th scope="row">{p.nome}{p.id===usuario&&' (você)'}</th><td>
+        {p.id===usuario?'Supervisor':<select aria-label={'Papel de '+p.nome} value={p.papel} disabled={ocupado||carregando||!!erro}
+          onChange={e=>{
+            const papel=e.target.value
+            const rotulo=papel==='supervisor'?'Supervisor':'Colaborador'
+            if(confirm('Alterar o papel de '+p.nome+' para '+rotulo+'?'))alterar(p,papel)
+          }}><option value="colaborador">Colaborador</option><option value="supervisor">Supervisor</option></select>}
+      </td></tr>)}</tbody>
+    </table></div>
+    <Paginas pagina={pagina} total={total} limite={limite} mudar={setPagina} ocupado={ocupado||carregando}/>
+  </section>
+}
+
 export function PainelEquipe({db,versao,verEtapas,gerenciar}) {
   const [equipe,setEquipe]=useState(null)
   const [erro,setErro]=useState(false)

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
 import { Avatar, PerfilUsuario } from './perfil'
 import { indicador } from './indicadores.mjs'
-import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes, PainelEquipe } from './central'
+import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes, PainelEquipe, UsuariosAprovados } from './central'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -156,7 +156,7 @@ function CRM({usuario,conta}) {
       else setEquipe(data)
     })
     return ()=>{ativo=false}
-  },[perfil,supervisor])
+  },[perfil,supervisor,versao])
   useEffect(()=>{
     if (!perfil) return
     if(['Distribuição','Novidades','Lotes','Perfil'].includes(aba)){setCarregando(false);return}
@@ -270,7 +270,11 @@ function CRM({usuario,conta}) {
     setOcupado(true);setErro('');setAviso('')
     try {
       const {error}=await db.rpc(funcao,parametros)
-      if (error) throw error
+      if (error) {
+        if(funcao==='alterar_papel_colaborador' && error.code==='PGRST202')
+          throw Error('Ative a gestão de papéis no Supabase para liberar esta ação.')
+        throw error
+      }
       setDetalhe(null);setIds([]);reler(v=>v+1);setAviso(mensagem)
     } catch(e) {setErro(e.message)}
     finally {setOcupado(false)}
@@ -338,14 +342,15 @@ function CRM({usuario,conta}) {
       {!centralAberta && carregando && exibidas.length>0 && <span className="atualizacao-discreta" role="status">Atualizando dados…</span>}
       {aba==='Perfil'?null:centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} responsavelInicial={responsavelGestao} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
       carregando && exibidas.length===0 ? <p role="status">Carregando carteira…</p> :
-        aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
+        aba==='Acessos' ? <><section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
           {pedidos.map(p=><article className="toolbar" key={p.id}><span><b>{p.nome}</b><small className="block">{p.email}</small></span>
             <button disabled={ocupado} onClick={()=>{
               if (confirm('Liberar o acesso de '+p.email+' como colaborador?')) salvar('aprovar_colaborador',{p_id:p.id},'Acesso liberado.')
             }}>Aprovar colaborador</button>
           </article>)}
-        </section> :
+        </section><UsuariosAprovados db={db} usuario={usuario} versao={versao} ocupado={ocupado}
+          alterar={(p,papel)=>salvar('alterar_papel_colaborador',{p_id:p.id,p_papel:papel,p_papel_atual:p.papel},'Papel atualizado.')}/></> :
         aba==='Retornos' ? <section className="panel"><h2>Retornos programados</h2>
           {exibidas.map(c=><div className="table" key={c.etapa}><table><thead><tr><th>Caso</th><th>Prazo</th><th>Situação</th><th>Praça</th><th>Motivo</th></tr></thead>
           <tbody>{c.casos.map(item=><tr key={item.id}><th scope="row"><button disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></th>
