@@ -40,3 +40,4 @@ progress{width:100%;accent-color:#6ee7c0}
 .dados-driver{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px}
 .dados-driver div{background:#111c2e;border-radius:9px;padding:10px;min-width:0}
 .dados-driver dt{font-size:12px;color:#adc6df}.dados-driver dd{margin:4px 0 0;overflow-wrap:anywhere}
+.carteira-lista .caso-linha{cursor:pointer}.carteira-lista .caso-linha:focus-within{background:#1b3046}

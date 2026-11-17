@@ -10,7 +10,8 @@ const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 const db = url && key ? createClient(url, key) : null
 const etapas = { novo:'Novos casos', em_contato:'Em contato', aguardando:'Aguardando retorno', recuperado:'Recuperados', encerrado:'Encerrados' }
 const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato'
-const limite = 20
+const limiteLista = 20
+const limiteKanban = 5
 
 function Badge({valor}) {
   const chave=normalize(valor).replace(/[^a-z0-9]+/g,'-')
@@ -156,6 +157,7 @@ function CRM({usuario}) {
     const chaves=aba==='Distribuição'?['lote']:aba==='Retornos'?['retornos']:aba==='Carteira'&&visao==='lista'?['lista']:Object.keys(etapas)
     Promise.all(chaves.map(async etapa=>{
       const pagina=paginas[etapa]||0
+      const limite=aba==='Carteira' && visao==='kanban' ? limiteKanban : limiteLista
       let consulta=db.from('casos').select(selecaoCampos,{count:'exact'}).order('semana_entrada',{ascending:false}).order('id')
       if (etapa==='lote') consulta=consulta.eq('aberto',true)
       else if (etapa==='retornos') {
@@ -182,7 +184,7 @@ function CRM({usuario}) {
       if (supervisor && filtro) consulta=filtro==='livre'?consulta.is('responsavel_id',null):consulta.eq('responsavel_id',filtro)
       const {data,count,error}=await consulta.range(pagina*limite,pagina*limite+limite-1)
       if (error) throw error
-      return {etapa,pagina,total:count,casos:data}
+      return {etapa,pagina,limite,total:count,casos:data}
     })).then(dados=>{if(ativo)setColunas(dados.map(coluna=>({...coluna,aba,visao})))})
       .catch(e=>{if(ativo){setColunas([]);setErro(e.message)}})
       .finally(()=>{if(ativo)setCarregando(false)})
@@ -235,6 +237,8 @@ function CRM({usuario}) {
     finally {setOcupado(false)}
   }
   async function abrir(caso) {
+    if (ocupado) return
+    setDetalhe({caso,carregando:true})
     setOcupado(true);setErro('')
     try {
       const [e,c,origem]=await Promise.all([
@@ -243,9 +247,15 @@ function CRM({usuario}) {
         db.from('casos').select('dados_origem').eq('id',caso.id).maybeSingle(),
       ])
       if (origem.error) throw origem.error
-      setDetalhe({caso:{...caso,dados_origem:origem.data?.dados_origem},evolucao:e,contatos:c})
-    } catch(e) {setErro(e.message)}
-    finally {setOcupado(false)}
+      if (!origem.data) throw Error('O caso não está mais disponível para sua conta.')
+      setDetalhe(atual=>atual?.caso.id===caso.id
+        ? {caso:{...caso,dados_origem:origem.data.dados_origem},evolucao:e,contatos:c}
+        : atual)
+    } catch(e) {
+      setDetalhe(atual=>atual?.caso.id===caso.id
+        ? {caso,erro:e.message || 'Não foi possível carregar o caso.'}
+        : atual)
+    } finally {setOcupado(false)}
   }
 
   return <main>
@@ -278,7 +288,14 @@ function CRM({usuario}) {
       {!detalhe && aba==='Carteira' && <div className="toolbar visualizacao" aria-label="Visualização da carteira">
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
-      {detalhe ? <Detalhe {...detalhe} ocupado={ocupado} fechar={()=>setDetalhe(null)} salvar={salvar}/> :
+      {detalhe ? (detalhe.carregando || detalhe.erro
+        ? <section className="panel" aria-busy={!!detalhe.carregando}>
+            <button onClick={()=>setDetalhe(null)}>Voltar à lista</button>
+            <h2>Caso {detalhe.caso.id}</h2>
+            {detalhe.carregando ? <p role="status">Carregando dados e histórico…</p> :
+              <><p role="alert">{detalhe.erro}</p><button onClick={()=>abrir(detalhe.caso)}>Tentar novamente</button></>}
+          </section>
+        : <Detalhe {...detalhe} ocupado={ocupado} fechar={()=>setDetalhe(null)} salvar={salvar}/>) :
         carregando ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
@@ -327,7 +344,7 @@ function CRM({usuario}) {
           </tr></thead><tbody>{c.casos.map(item=>{
             const atual=item.evolucao_semanal?.[0]
             const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
-            return <tr key={item.id}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></th>
+            return <tr key={item.id} className="caso-linha" onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button></th>
               <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
               <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
               <td>{atual?.semana || '—'}</td><td><Badge valor={atual?.prioridade}/></td>
@@ -353,6 +370,8 @@ function CRM({usuario}) {
 
 function Paginacao({coluna,mudar}) {
   if (!coluna.total) return <p>Nenhum caso.</p>
+  const limite=coluna.limite
+  if (coluna.total<=limite) return null
   return <div className="toolbar">
     <button disabled={!coluna.pagina} onClick={()=>mudar(coluna.pagina-1)}>Anterior</button>
     <small>{coluna.pagina+1} de {Math.ceil(coluna.total/limite)}</small>
