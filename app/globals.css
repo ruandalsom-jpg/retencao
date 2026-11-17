@@ -1,0 +1,26 @@
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;color:#edf2fa;background:#0d1421}
+*{box-sizing:border-box}body{margin:0}main{max-width:1250px;margin:auto;padding:36px 24px}
+header,.toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+h1{font-size:clamp(30px,5vw,46px);margin:4px 0 26px;letter-spacing:-.045em}
+h2{margin:0 0 20px;font-size:20px}.brand{color:#6ee7c0;font-weight:700}
+.demo,.pill{border-radius:20px;background:#233953;color:#d6e9ff;padding:5px 10px;font-size:13px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:14px;margin-bottom:20px}
+article,.panel{background:#172336;border:1px solid #2c3c53;border-radius:16px;padding:20px}
+article{border-top:2px solid #6ee7c0}small,label{color:#b8c8dc}strong{display:block;font-size:36px;margin-top:6px}
+.toolbar{justify-content:flex-start}.batch{background:#111c2e;border-radius:12px;padding:12px;margin:16px 0}
+label{display:grid;gap:5px;font-size:13px}select,button{font:inherit;border:1px solid #3f5470;border-radius:8px;padding:8px 12px;background:#1c2b41}
+button{cursor:pointer}.primary{background:#6ee7c0;color:#0d241f;font-weight:700}button:disabled{opacity:.45;cursor:default}
+.table{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px;text-align:left}
+th,td{padding:12px 9px;border-bottom:1px solid #2c3c53;white-space:nowrap}thead{color:#b8c8dc}
+nav{margin:0 0 18px}button[aria-current=page]{background:#27495b;border-color:#6ee7c0}
+.panel{margin:16px 0}.block{display:block;margin-top:4px}
+textarea,input[type=date]{font:inherit;background:#111c2e;color:inherit;border:1px solid #3f5470;border-radius:8px;padding:10px}
+textarea{width:100%;resize:vertical}.panel>label,form>label{margin:14px 0}
+.aviso,.erro{padding:12px;border-radius:8px;background:#174239}.erro{background:#552c39}
+.resumo{margin-top:16px}
+.login-shell{min-height:100dvh;display:grid;place-items:center}
+.login{width:min(100%,450px);padding:32px}.login a{color:#8cdbc9}
+input:not([type=checkbox]),select{min-width:0;background:#111c2e;color:inherit;border:1px solid #3f5470;border-radius:8px;padding:9px 12px;font:inherit}
+.kanban{display:grid;grid-template-columns:repeat(5,minmax(225px,1fr));gap:12px;overflow-x:auto;padding:6px 0 16px}
+.kanban-col{background:#111c2e;border-radius:14px;padding:12px;min-width:0}.kanban-col h2{font-size:16px}.kanban-col h3{font-size:15px;margin:8px 0}.kanban-col article{margin-bottom:10px;padding:12px}.kanban-col label{margin-top:10px}.kanban-col .toolbar{gap:5px}
+progress{width:100%;accent-color:#6ee7c0}
