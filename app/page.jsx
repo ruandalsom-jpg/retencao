@@ -12,6 +12,8 @@ const selecaoCampos = 'id,praca,semana_entrada,motivo,prioridade,responsavel_id,
 const limite = 20
 
 export default function Home() {
+  const [cadastro,setCadastro] = useState(false)
+  const [mensagem,setMensagem] = useState('')
   const [sessao,setSessao] = useState(undefined)
   const [erro,setErro] = useState('')
   const [ocupado,setOcupado] = useState(false)
@@ -23,10 +25,25 @@ export default function Home() {
   async function entrar(evento) {
     evento.preventDefault()
     const form=new FormData(evento.currentTarget)
-    setOcupado(true);setErro('')
+    setOcupado(true);setErro('');setMensagem('')
     try {
-      const {error}=await db.auth.signInWithPassword({email:String(form.get('email')).trim(),password:form.get('senha')})
-      if (error) setErro('Não foi possível entrar. Confira o e-mail e a senha ou fale com o supervisor.')
+      const email=String(form.get('email')).trim()
+      const password=String(form.get('senha'))
+      if (cadastro) {
+        const nome=String(form.get('nome')).trim()
+        if (!nome) { setErro('Informe seu nome.'); return }
+        const {data,error}=await db.auth.signUp({
+          email,password,options:{data:{nome},emailRedirectTo:window.location.origin},
+        })
+        if (error) setErro(error.message)
+        else if (!data.session) {
+          setCadastro(false)
+          setMensagem('Confira seu e-mail para confirmar o cadastro. Depois, aguarde a aprovação do supervisor.')
+        }
+      } else {
+        const {error}=await db.auth.signInWithPassword({email,password})
+        if (error) setErro('Não foi possível entrar. Confira o e-mail e a senha ou fale com o supervisor.')
+      }
     } catch { setErro('Conexão indisponível. Tente novamente.') }
     finally { setOcupado(false) }
   }
@@ -35,11 +52,14 @@ export default function Home() {
     <span className="brand">Operações</span><h1>Retenção de Frota</h1><p>Acesse sua carteira de entregadores.</p>
     {!db ? <p className="aviso">Conexão com o Supabase pendente neste ambiente.</p> :
       sessao===undefined ? <p role="status">Verificando sessão…</p> :
-      <form onSubmit={entrar}>
+      <form key={cadastro?'cadastro':'login'} onSubmit={entrar}>
+        {cadastro && <label>Nome<input name="nome" autoComplete="name" maxLength={150} required/></label>}
         <label>E-mail<input type="email" name="email" autoComplete="username" required/></label>
-        <label>Senha<input type="password" name="senha" autoComplete="current-password" required/></label>
-        <button className="primary" disabled={ocupado}>{ocupado?'Entrando…':'Entrar'}</button>
+        <label>Senha<input type="password" name="senha" autoComplete={cadastro?"new-password":"current-password"} minLength={cadastro?8:undefined} required/></label>
+        <button className="primary" disabled={ocupado}>{ocupado?'Aguarde…':cadastro?'Criar conta':'Entrar'}</button>
+        <button type="button" disabled={ocupado} onClick={()=>{setCadastro(!cadastro);setErro('');setMensagem('')}}>{cadastro?'Voltar ao login':'Criar uma conta'}</button>
       </form>}
+    {mensagem && <p className="aviso" role="status">{mensagem}</p>}
     {erro && <p className="erro" role="alert">{erro}</p>}
     <p><Link href="/demo">Abrir demonstração com dados fictícios</Link></p>
   </section></main>
@@ -47,6 +67,9 @@ export default function Home() {
 
 function CRM({usuario}) {
   const [perfil,setPerfil]=useState(null)
+  const [pendente,setPendente]=useState(false)
+  const [revisao,reverPerfil]=useState(0)
+  const [pedidos,setPedidos]=useState([])
   const [equipe,setEquipe]=useState([])
   const [aba,setAba]=useState('Carteira')
   const [versao,reler]=useState(0)
@@ -67,10 +90,12 @@ function CRM({usuario}) {
     db.from('colaboradores').select('id,nome,papel').eq('id',usuario).maybeSingle().then(({data,error})=>{
       if (!ativo) return
       setPerfil(data)
-      if (error || !data) {setErro('Cadastro de colaborador indisponível. Fale com o supervisor.');setCarregando(false)}
+      setPendente(!error && !data)
+      if (error) setErro('Não foi possível consultar seu perfil. Verifique a configuração do banco.')
+      if (error || !data) setCarregando(false)
     })
     return ()=>{ativo=false}
-  },[usuario])
+  },[usuario,revisao])
   useEffect(()=>{
     if (!perfil) return
     let ativo=true
@@ -85,6 +110,15 @@ function CRM({usuario}) {
     if (!perfil) return
     let ativo=true
     setCarregando(true)
+    if (aba==='Acessos') {
+      db.rpc('pedidos_de_acesso').then(({data,error})=>{
+        if (!ativo) return
+        if (error) {setPedidos([]);setErro(error.message)}
+        else setPedidos(data)
+        setCarregando(false)
+      })
+      return ()=>{ativo=false}
+    }
     const chaves=aba==='Distribuição'?['lote']:Object.keys(etapas)
     Promise.all(chaves.map(async etapa=>{
       const pagina=paginas[etapa]||0
@@ -129,14 +163,26 @@ function CRM({usuario}) {
   return <main>
     <header><div><span className="brand">Operações</span><h1>Retenção de Frota</h1></div><div className="toolbar"><span>{perfil?.nome}</span><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
     {erro && <p className="erro" role="alert">{erro}</p>}{aviso && <p className="aviso" role="status">{aviso}</p>}
+    {pendente && <section className="panel"><h2>Conta aguardando aprovação</h2>
+      <p>Peça ao supervisor para aprovar seu cadastro em Acessos.</p>
+      <button onClick={()=>{setErro('');reverPerfil(v=>v+1)}}>Verificar aprovação</button>
+    </section>}
     {perfil && <>
-      <nav className="toolbar">{['Carteira',...(supervisor?['Distribuição','Dashboard']:[])].map(t=><button key={t} aria-current={t===aba?'page':undefined} onClick={()=>{setAba(t);recorte()}}>{t}</button>)}</nav>
-      {!detalhe && <section className="panel toolbar" aria-label="Filtros">
+      <nav className="toolbar">{['Carteira',...(supervisor?['Distribuição','Dashboard','Acessos']:[])].map(t=><button key={t} aria-current={t===aba?'page':undefined} onClick={()=>{setAba(t);recorte()}}>{t}</button>)}</nav>
+      {!detalhe && aba!=='Acessos' && <section className="panel toolbar" aria-label="Filtros">
         <label>Semana de entrada<input value={semana} placeholder="Todas · AAAA-W00" onChange={e=>{setSemana(e.target.value);recorte()}}/></label>
         {supervisor && <label>Responsável<select value={filtro} onChange={e=>{setFiltro(e.target.value);recorte()}}><option value="">Todos</option><option value="livre">Sem responsável</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>}
       </section>}
       {detalhe ? <Detalhe {...detalhe} ocupado={ocupado} fechar={()=>setDetalhe(null)} salvar={salvar}/> :
         carregando ? <p role="status">Carregando carteira…</p> :
+        aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
+          {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
+          {pedidos.map(p=><article className="toolbar" key={p.id}><span><b>{p.nome}</b><small className="block">{p.email}</small></span>
+            <button disabled={ocupado} onClick={()=>{
+              if (confirm('Liberar o acesso de '+p.email+' como colaborador?')) salvar('aprovar_colaborador',{p_id:p.id},'Acesso liberado.')
+            }}>Aprovar colaborador</button>
+          </article>)}
+        </section> :
         aba==='Dashboard' ? <section className="panel"><h2>Casos por etapa</h2><div className="cards">{colunas.map(c=><article key={c.etapa}>
           <small>{etapas[c.etapa]}</small><strong>{c.total}</strong>
           <progress value={c.total} max={Math.max(1,colunas.reduce((n,l)=>n+l.total,0))} aria-label={etapas[c.etapa]}/>
