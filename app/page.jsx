@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
+import { AlternarTema } from './tema'
+import { indicador } from './indicadores.mjs'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -21,7 +23,6 @@ function Badge({valor}) {
 function dataBR(valor) {
   return valor ? valor.split('-').reverse().join('/') : '—'
 }
-function indicador(valor) { return valor==null || valor==='' ? '—' : valor }
 
 async function lerHistorico(consulta) {
   const registros=[]
@@ -76,7 +77,9 @@ export default function Home() {
   }
   if (sessao) return <CRM key={sessao.user.id} usuario={sessao.user.id}/>
   return <main className="login-shell"><section className="panel login">
-    <span className="brand">Operações</span><h1>Retenção de Frota</h1><p>Acesse sua carteira de entregadores.</p>
+    <header><span className="brand">Operações</span><AlternarTema/></header>
+    <h1>Retenção de Frota</h1><p className="login-descricao">Sua carteira, seus contatos e a evolução de cada entregador em um só lugar.</p>
+    <h2>{cadastro?'Crie sua conta':'Acesse sua carteira'}</h2>
     {!db ? <p className="aviso">Conexão com o Supabase pendente neste ambiente.</p> :
       sessao===undefined ? <p role="status">Verificando sessão…</p> :
       <form key={cadastro?'cadastro':'login'} onSubmit={entrar}>
@@ -272,7 +275,7 @@ function CRM({usuario}) {
   }
 
   return <main>
-    <header><div><span className="brand">Operações</span><h1>Retenção de Frota</h1></div><div className="toolbar"><span>{perfil?.nome}</span><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
+    <header><div><span className="brand">Operações</span><h1>Retenção de Frota</h1></div><div className="toolbar"><AlternarTema/><span>{perfil?.nome}</span><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
     {erro && <p className="erro" role="alert">{erro}</p>}{aviso && <p className="aviso" role="status">{aviso}</p>}
     {pendente && <section className="panel"><h2>Conta aguardando aprovação</h2>
       <p>Peça ao supervisor para aprovar seu cadastro em Acessos.</p>
@@ -387,7 +390,7 @@ function PainelCaso({fechar,children}) {
     onClick={e=>{if(e.target===e.currentTarget)fechar()}}>
     <div className="painel-caso-conteudo">
       <header><h2 id="painel-caso-titulo">Atendimento do entregador</h2>
-        <button onClick={fechar} aria-label="Fechar atendimento">Fechar</button>
+        <div className="toolbar"><AlternarTema/><button onClick={fechar} aria-label="Fechar atendimento">Fechar</button></div>
       </header>
       {children}
     </div>
@@ -457,7 +460,7 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
   return <section className="panel">
     <div className="caso-diagnostico"><small>{caso.id} · Entrada {caso.semana_entrada}</small>
     <h2>{ind?.motivo || caso.motivo}</h2><Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>
-    {Number(ind?.semanas_inativo)>0 && <p>{ind.semanas_inativo} semana(s) sem produção</p>}</div>
+    {Number(ind?.semanas_inativo)>0 && <p>{indicador(ind.semanas_inativo,'semanas_inativo')} semana(s) sem produção</p>}</div>
     <h3>Identificação e contexto</h3>
     <dl className="dados-driver">
       {[['UUID',caso.entregador_id],['Praça',caso.praca],['Subpraça',origem['Subpraça Principal']],['Próximo contato',dataBR(caso.proximo_contato)]].map(([rotulo,valor])=><div key={rotulo}><dt>{rotulo}</dt><dd>{valor || '—'}</dd></div>)}
@@ -468,11 +471,11 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
     </article>}
     {ultima && <><h3>Última semana registrada · {ultima.semana}</h3>
       <p>{ind?.motivo || caso.motivo} · {ultima.prioridade}</p>
-      <div className="cards">{[['Horas online',ind?.horas_online],['Pedidos',ind?.pedidos],['Ofertas',ind?.ofertas],['Rejeição (%)',ind?.rejeicao_pct]].map(([nome,valor])=><article key={nome}><small>{nome}</small><strong>{valor==null||valor===''?'—':valor}</strong></article>)}</div></>}
+      <div className="cards">{[['Horas online','horas_online'],['Pedidos','pedidos'],['Ofertas','ofertas'],['Rejeição','rejeicao_pct']].map(([nome,tipo])=><article key={tipo}><small>{nome}</small><strong>{indicador(ind?.[tipo],tipo)}</strong></article>)}</div></>}
     <h3>Evolução semanal</h3>
     <div className="table"><table><thead><tr><th>Semana</th><th>Prioridade</th><th>Horas online</th><th>Pedidos</th><th>Ofertas</th><th>Rejeição (%)</th><th>Semanas sem produção</th></tr></thead>
       <tbody>{evolucao.map(e=><tr key={e.semana}><td>{e.semana}</td><td><Badge valor={e.prioridade}/></td>
-        {['horas_online','pedidos','ofertas','rejeicao_pct','semanas_inativo'].map(k=><td key={k}>{indicador(e.indicadores?.[k])}</td>)}
+        {['horas_online','pedidos','ofertas','rejeicao_pct','semanas_inativo'].map(k=><td key={k}>{indicador(e.indicadores?.[k],k)}</td>)}
       </tr>)}</tbody></table></div>
     <h3>Histórico de contatos</h3>
     {contatos.length?contatos.map(c=><p key={c.id}><b>{c.resultado}</b> · {c.canal} · {new Date(c.criado_em).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}<br/>{c.observacao}</p>):<p>Nenhum contato registrado.</p>}
