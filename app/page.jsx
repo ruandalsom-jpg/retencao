@@ -9,8 +9,28 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 const db = url && key ? createClient(url, key) : null
 const etapas = { novo:'Novos casos', em_contato:'Em contato', aguardando:'Aguardando retorno', recuperado:'Recuperados', encerrado:'Encerrados' }
-const selecaoCampos = 'id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato'
+const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato'
 const limite = 20
+
+function Badge({valor}) {
+  const chave=normalize(valor).replace(/[^a-z0-9]+/g,'-')
+  return <span className={'badge badge-'+chave}>{{media:'Média',reativacao:'Reativação'}[chave] || valor || '—'}</span>
+}
+function dataBR(valor) {
+  return valor ? valor.split('-').reverse().join('/') : '—'
+}
+function indicador(valor) { return valor==null || valor==='' ? '—' : valor }
+
+async function lerHistorico(consulta) {
+  const registros=[]
+  const tamanho=200
+  for (let inicio=0;;inicio+=tamanho) {
+    const {data,error}=await consulta().range(inicio,inicio+tamanho-1)
+    if (error) throw error
+    registros.push(...data)
+    if (data.length<tamanho) return registros
+  }
+}
 
 export default function Home() {
   const [cadastro,setCadastro] = useState(false)
@@ -85,6 +105,10 @@ function CRM({usuario}) {
   const [colunas,setColunas]=useState([])
   const [paginas,setPaginas]=useState({})
   const [semana,setSemana]=useState('')
+  const [visao,setVisao]=useState('lista')
+  const [busca,setBusca]=useState('')
+  const [prioridade,setPrioridade]=useState('')
+  const [etapaFiltro,setEtapaFiltro]=useState('')
   const [praca,setPraca]=useState('')
   const [recorteRetornos,setRecorteRetornos]=useState('todos')
   const [linha,setLinha]=useState(null)
@@ -129,7 +153,7 @@ function CRM({usuario}) {
       })
       return ()=>{ativo=false}
     }
-    const chaves=aba==='Distribuição'?['lote']:aba==='Retornos'?['retornos']:Object.keys(etapas)
+    const chaves=aba==='Distribuição'?['lote']:aba==='Retornos'?['retornos']:aba==='Carteira'&&visao==='lista'?['lista']:Object.keys(etapas)
     Promise.all(chaves.map(async etapa=>{
       const pagina=paginas[etapa]||0
       let consulta=db.from('casos').select(selecaoCampos,{count:'exact'}).order('semana_entrada',{ascending:false}).order('id')
@@ -141,18 +165,29 @@ function CRM({usuario}) {
         if (recorteRetornos==='vencidos') consulta=consulta.lt('proximo_contato',dia)
         if (recorteRetornos==='hoje') consulta=consulta.eq('proximo_contato',dia)
         if (recorteRetornos==='futuros') consulta=consulta.gt('proximo_contato',dia)
+      } else if (etapa==='lista') {
+        consulta=db.from('casos').select(selecaoCampos+',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade)',{count:'exact'})
+          .order('semana_entrada',{ascending:false}).order('id')
+          .order('semana',{referencedTable:'evolucao_semanal',ascending:false})
+          .limit(1,{referencedTable:'evolucao_semanal'})
       } else consulta=consulta.eq('etapa',etapa)
+      if (aba==='Carteira' || aba==='Distribuição') {
+        const trecho=busca.trim().replace(/[^\p{L}\p{N} ._-]/gu,'').trim()
+        if (trecho) consulta=consulta.or('id.ilike.%'+trecho+'%,entregador_id.ilike.%'+trecho+'%,motivo.ilike.%'+trecho+'%')
+        if (prioridade) consulta=consulta.in('prioridade',prioridade==='Média'?['Media','Média']:prioridade==='Reativação'?['Reativacao','Reativação']:[prioridade])
+        if (etapaFiltro) consulta=consulta.eq('etapa',etapaFiltro)
+      }
       if (praca.trim()) consulta=consulta.ilike('praca','%'+praca.trim()+'%')
       if (semana) consulta=consulta.eq('semana_entrada',semana)
       if (supervisor && filtro) consulta=filtro==='livre'?consulta.is('responsavel_id',null):consulta.eq('responsavel_id',filtro)
       const {data,count,error}=await consulta.range(pagina*limite,pagina*limite+limite-1)
       if (error) throw error
       return {etapa,pagina,total:count,casos:data}
-    })).then(dados=>{if(ativo)setColunas(dados)})
+    })).then(dados=>{if(ativo)setColunas(dados.map(coluna=>({...coluna,aba,visao})))})
       .catch(e=>{if(ativo){setColunas([]);setErro(e.message)}})
       .finally(()=>{if(ativo)setCarregando(false)})
     return ()=>{ativo=false}
-  },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos])
+  },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos,visao,busca,prioridade,etapaFiltro])
 
   useEffect(()=>{
     if (!supervisor || aba!=='Dashboard') return
@@ -187,6 +222,7 @@ function CRM({usuario}) {
     return ()=>{ativo=false}
   },[supervisor,aba,semana,praca,filtro,modoLinha,versao])
 
+  const exibidas=colunas.filter(c=>c.aba===aba && c.visao===visao)
   function recorte() { setPaginas({});setIds([]);setErro('');setAviso('');setDetalhe(null) }
   async function salvar(funcao, parametros, mensagem) {
     if (ocupado) return
@@ -202,12 +238,12 @@ function CRM({usuario}) {
     setOcupado(true);setErro('')
     try {
       const [e,c,origem]=await Promise.all([
-        db.from('evolucao_semanal').select('semana,prioridade,indicadores').eq('caso_id',caso.id).order('semana',{ascending:false}).limit(52),
-        db.from('contatos').select('id,canal,resultado,observacao,criado_em,retorno').eq('caso_id',caso.id).order('id',{ascending:false}).limit(100),
+        lerHistorico(()=>db.from('evolucao_semanal').select('semana,prioridade,indicadores').eq('caso_id',caso.id).order('semana',{ascending:false})),
+        lerHistorico(()=>db.from('contatos').select('id,canal,resultado,observacao,criado_em,retorno').eq('caso_id',caso.id).order('id',{ascending:false})),
         db.from('casos').select('dados_origem').eq('id',caso.id).maybeSingle(),
       ])
-      if (e.error || c.error) throw e.error || c.error
-      setDetalhe({caso:{...caso,dados_origem:origem.data?.dados_origem},evolucao:e.data,contatos:c.data})
+      if (origem.error) throw origem.error
+      setDetalhe({caso:{...caso,dados_origem:origem.data?.dados_origem},evolucao:e,contatos:c})
     } catch(e) {setErro(e.message)}
     finally {setOcupado(false)}
   }
@@ -222,13 +258,26 @@ function CRM({usuario}) {
     {perfil && <>
       <nav className="toolbar">{['Carteira','Retornos',...(supervisor?['Distribuição','Dashboard','Acessos']:[])].map(t=><button key={t} aria-current={t===aba?'page':undefined} onClick={()=>{setAba(t);recorte()}}>{t}</button>)}</nav>
       {!detalhe && aba!=='Acessos' && <section className="panel toolbar" aria-label="Filtros">
+        {(aba==='Carteira'||aba==='Distribuição') && <>
+          <label>Buscar caso, UUID ou motivo<input value={busca} onChange={e=>{setBusca(e.target.value);recorte()}}/></label>
+          <label>Prioridade de entrada<select value={prioridade} onChange={e=>{setPrioridade(e.target.value);recorte()}}>
+            <option value="">Todas</option>{['Alta','Média','Reativação','Monitoramento'].map(p=><option key={p}>{p}</option>)}
+          </select></label>
+          <label>Etapa<select value={etapaFiltro} onChange={e=>{setEtapaFiltro(e.target.value);recorte()}}>
+            <option value="">Todas</option>{Object.entries(etapas).map(([id,nome])=><option key={id} value={id}>{nome}</option>)}
+          </select></label>
+        </>}
         <label>Semana de entrada<input value={semana} placeholder="Todas · AAAA-W00" onChange={e=>{setSemana(e.target.value);recorte()}}/></label>
         <label>Praça<input value={praca} placeholder="Todas" onChange={e=>{setPraca(e.target.value);recorte()}}/></label>
         {aba==='Retornos' && <label>Prazo<select value={recorteRetornos} onChange={e=>{setRecorteRetornos(e.target.value);recorte()}}>
           <option value="todos">Todos</option><option value="vencidos">Vencidos</option><option value="hoje">Hoje</option><option value="futuros">Futuros</option>
         </select></label>}
         {supervisor && <label>Responsável<select value={filtro} onChange={e=>{setFiltro(e.target.value);recorte()}}><option value="">Todos</option><option value="livre">Sem responsável</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>}
+        <button onClick={()=>{setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setRecorteRetornos('todos');recorte()}}>Limpar filtros</button>
       </section>}
+      {!detalhe && aba==='Carteira' && <div className="toolbar visualizacao" aria-label="Visualização da carteira">
+        {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
+      </div>}
       {detalhe ? <Detalhe {...detalhe} ocupado={ocupado} fechar={()=>setDetalhe(null)} salvar={salvar}/> :
         carregando ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
@@ -240,13 +289,13 @@ function CRM({usuario}) {
           </article>)}
         </section> :
         aba==='Retornos' ? <section className="panel"><h2>Retornos programados</h2>
-          {colunas.map(c=><div className="table" key={c.etapa}><table><thead><tr><th>Caso</th><th>Prazo</th><th>Situação</th><th>Praça</th><th>Motivo</th></tr></thead>
+          {exibidas.map(c=><div className="table" key={c.etapa}><table><thead><tr><th>Caso</th><th>Prazo</th><th>Situação</th><th>Praça</th><th>Motivo</th></tr></thead>
           <tbody>{c.casos.map(item=><tr key={item.id}><th scope="row"><button disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></th>
-            <td>{item.proximo_contato.split('-').reverse().join('/')}</td><td>{item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}</td>
+            <td>{dataBR(item.proximo_contato)}</td><td><Badge valor={item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}/></td>
             <td>{item.praca}</td><td>{item.motivo}</td></tr>)}</tbody></table>
           <Paginacao coluna={c} mudar={p=>setPaginas({retornos:p})}/></div>)}
         </section> :
-        aba==='Dashboard' ? <><section className="panel"><h2>Casos por etapa</h2><div className="cards">{colunas.map(c=><article key={c.etapa}>
+        aba==='Dashboard' ? <><section className="panel"><h2>Casos por etapa</h2><div className="cards">{exibidas.map(c=><article key={c.etapa}>
           <small>{etapas[c.etapa]}</small><strong>{c.total}</strong>
           <progress value={c.total} max={Math.max(1,colunas.reduce((n,l)=>n+l.total,0))} aria-label={etapas[c.etapa]}/>
         </article>)}</div></section>
@@ -267,15 +316,28 @@ function CRM({usuario}) {
               if (confirm('Atribuir '+ids.length+' casos ao colaborador selecionado?')) salvar('atribuir_lote',{p_ids:ids,p_responsavel:dono},'Lote atribuído.')
             }}>Atribuir lote</button>
           </div>
-          {colunas.map(c=><div key={c.etapa} className="table"><table><thead><tr><th>Seleção</th><th>Caso</th><th>Praça</th><th>Motivo</th><th>Responsável</th></tr></thead>
+          {exibidas.map(c=><div key={c.etapa} className="table"><table><thead><tr><th>Seleção</th><th>Caso</th><th>Praça</th><th>Motivo</th><th>Responsável</th></tr></thead>
             <tbody>{c.casos.map(item=><tr key={item.id}><td><input type="checkbox" aria-label={'Selecionar caso '+item.id} checked={ids.includes(item.id)} onChange={e=>setIds(e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/></td>
               <td><button disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></td><td>{item.praca}</td><td>{item.motivo}</td><td>{equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id?'Atribuído':'Sem responsável')}</td></tr>)}</tbody>
             </table><Paginacao coluna={c} mudar={p=>{setIds([]);setPaginas({lote:p})}}/></div>)}
         </section> :
-        <section aria-label="Carteira em Kanban" className="kanban">{colunas.map(c=><section className="kanban-col" key={c.etapa}>
+        visao==='lista' ? <section className="panel"><h2>Carteira de acompanhamento</h2>
+          {exibidas.map(c=><div className="table" key={c.etapa}><table className="carteira-lista"><thead><tr>
+            {['Caso','Entrada','Praça / subpraça','Motivo de entrada','Prioridade de entrada','Etapa','Responsável','Retorno','Última semana','Prioridade atual'].map(t=><th scope="col" key={t}>{t}</th>)}
+          </tr></thead><tbody>{c.casos.map(item=>{
+            const atual=item.evolucao_semanal?.[0]
+            const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
+            return <tr key={item.id}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></th>
+              <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
+              <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
+              <td>{atual?.semana || '—'}</td><td><Badge valor={atual?.prioridade}/></td>
+            </tr>
+          })}</tbody></table><Paginacao coluna={c} mudar={p=>setPaginas({lista:p})}/></div>)}
+        </section> :
+        <section aria-label="Carteira em Kanban" className="kanban">{exibidas.map(c=><section className="kanban-col" key={c.etapa}>
           <h2>{etapas[c.etapa]} <small>{c.total}</small></h2>
           {c.casos.map(item=><article key={item.id}>
-            <small>{item.semana_entrada} · {item.prioridade}</small>
+            <small>{item.semana_entrada}</small> <Badge valor={item.prioridade}/>
             <h3>{item.motivo}</h3><p>{item.praca}</p>
             {item.proximo_contato && <p>Retorno em {item.proximo_contato}</p>}
             <button disabled={ocupado} onClick={()=>abrir(item)}>Abrir caso</button>
@@ -309,7 +371,13 @@ function Detalhe({caso,contatos,evolucao,ocupado,fechar,salvar}) {
   const pergunta=recente.includes('inativ')?'O que impediu você de operar e quando conseguiria voltar?':
     recente.includes('queda')?'O que mudou na sua disponibilidade ou na região onde você opera?':'O que ajudaria você a retomar ou manter a operação?'
   return <section className="panel"><button onClick={fechar}>Voltar</button>
-    <h2>{caso.motivo} · {caso.praca}</h2><p>{caso.id} · {etapas[caso.etapa]}</p>
+    <div className="caso-diagnostico"><small>{caso.id} · Entrada {caso.semana_entrada}</small>
+    <h2>{ind?.motivo || caso.motivo}</h2><Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>
+    {Number(ind?.semanas_inativo)>0 && <p>{ind.semanas_inativo} semana(s) sem produção</p>}</div>
+    <h3>Identificação e contexto</h3>
+    <dl className="dados-driver">
+      {[['UUID',caso.entregador_id],['Praça',caso.praca],['Subpraça',origem['Subpraça Principal']],['Próximo contato',dataBR(caso.proximo_contato)]].map(([rotulo,valor])=><div key={rotulo}><dt>{rotulo}</dt><dd>{valor || '—'}</dd></div>)}
+    </dl>
     {caso.aberto && <article><h3>Antes da chamada</h3><p>{pergunta}</p>
       {contatos[0] && <p>Último contato · {contatos[0].resultado}</p>}
       {telefone && <a className="whatsapp" href={'https://wa.me/'+telefone} target="_blank" rel="noreferrer">Abrir WhatsApp</a>}
@@ -318,8 +386,10 @@ function Detalhe({caso,contatos,evolucao,ocupado,fechar,salvar}) {
       <p>{ind?.motivo || caso.motivo} · {ultima.prioridade}</p>
       <div className="cards">{[['Horas online',ind?.horas_online],['Pedidos',ind?.pedidos],['Ofertas',ind?.ofertas],['Rejeição (%)',ind?.rejeicao_pct]].map(([nome,valor])=><article key={nome}><small>{nome}</small><strong>{valor==null||valor===''?'—':valor}</strong></article>)}</div></>}
     <h3>Evolução semanal</h3>
-    <div className="table"><table><thead><tr><th>Semana</th><th>Prioridade</th><th>Horas online</th><th>Pedidos</th><th>Ofertas</th><th>Rejeição (%)</th></tr></thead>
-      <tbody>{evolucao.map(e=><tr key={e.semana}><td>{e.semana}</td><td>{e.prioridade}</td><td>{e.indicadores?.horas_online||'—'}</td><td>{e.indicadores?.pedidos??'—'}</td><td>{e.indicadores?.ofertas??'—'}</td><td>{e.indicadores?.rejeicao_pct||'—'}</td></tr>)}</tbody></table></div>
+    <div className="table"><table><thead><tr><th>Semana</th><th>Prioridade</th><th>Horas online</th><th>Pedidos</th><th>Ofertas</th><th>Rejeição (%)</th><th>Semanas sem produção</th></tr></thead>
+      <tbody>{evolucao.map(e=><tr key={e.semana}><td>{e.semana}</td><td><Badge valor={e.prioridade}/></td>
+        {['horas_online','pedidos','ofertas','rejeicao_pct','semanas_inativo'].map(k=><td key={k}>{indicador(e.indicadores?.[k])}</td>)}
+      </tr>)}</tbody></table></div>
     <h3>Histórico de contatos</h3>
     {contatos.length?contatos.map(c=><p key={c.id}><b>{c.resultado}</b> · {c.canal} · {new Date(c.criado_em).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}<br/>{c.observacao}</p>):<p>Nenhum contato registrado.</p>}
     {caso.aberto && <form onSubmit={e=>{

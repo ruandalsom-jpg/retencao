@@ -25,3 +25,18 @@ input:not([type=checkbox]),select{min-width:0;background:#111c2e;color:inherit;b
 .kanban-col{background:#111c2e;border-radius:14px;padding:12px;min-width:0}.kanban-col h2{font-size:16px}.kanban-col h3{font-size:15px;margin:8px 0}.kanban-col article{margin-bottom:10px;padding:12px}.kanban-col label{margin-top:10px}.kanban-col .toolbar{gap:5px}
 progress{width:100%;accent-color:#6ee7c0}
 .whatsapp{display:inline-block;color:#87ebc1;font-weight:700;margin-top:6px}
+.visualizacao button[aria-pressed=true]{background:#174653;border-color:#54d7d2;color:#abfff2}
+.badge{display:inline-block;border-radius:7px;padding:4px 8px;background:#263a51;color:#d9ebff;font-size:12px;white-space:nowrap}
+.badge-alta,.badge-vencido{background:#602b3a;color:#ffd7de}
+.badge-media,.badge-hoje,.badge-aguardando-retorno{background:#544017;color:#ffe3a3}
+.badge-reativacao{background:#473674;color:#ebddff}
+.badge-monitoramento,.badge-recuperados{background:#194839;color:#abf6db}
+.badge-em-contato,.badge-agendado{background:#1c4564;color:#c5e9ff}
+.carteira-lista td{white-space:normal;min-width:100px}
+.carteira-lista tbody tr:hover{background:#1b3046}
+.caso-link{color:#7ce9e4;font-weight:700;padding:6px 8px}
+.caso-diagnostico{background:linear-gradient(115deg,#143948,#172336);border:1px solid #347478;border-radius:12px;padding:18px;margin:16px 0}
+.caso-diagnostico h2{margin:8px 0 10px}
+.dados-driver{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px}
+.dados-driver div{background:#111c2e;border-radius:9px;padding:10px;min-width:0}
+.dados-driver dt{font-size:12px;color:#adc6df}.dados-driver dd{margin:4px 0 0;overflow-wrap:anywhere}
