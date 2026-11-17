@@ -10,6 +10,19 @@ function segundaFeira(data) {
   return dia.toISOString().slice(0, 10)
 }
 
+function semanasDisponiveis() {
+  const atual = new Date(segundaFeira(hoje()) + 'T12:00:00Z')
+  return Array.from({ length: 156 }, (_, indice) => {
+    const dia = new Date(atual)
+    dia.setUTCDate(dia.getUTCDate() - indice * 7)
+    const segunda = dia.toISOString().slice(0,10)
+    dia.setUTCDate(dia.getUTCDate() + 3)
+    const ano = dia.getUTCFullYear()
+    const semana = Math.ceil(((dia - Date.UTC(ano,0,1,12)) / 86400000 + 1) / 7)
+    return { segunda, rotulo: ano + '-W' + String(semana).padStart(2,'0') }
+  })
+}
+
 const numero = valor => Number(valor).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
 const dataBR = valor => valor?.split('-').reverse().join('/') || '—'
 
@@ -84,21 +97,25 @@ export function PainelAtendimentos({ db, versao, equipe, abrir }) {
     p_semana:semana,p_autor:autor||null,p_praca:praca.trim()||null,p_prioridade:prioridade||null,
   },versao)
   const dados = consulta?.dados
-  const metricas = [['recebidos','Casos recebidos'],['atendidos','Casos atendidos'],['tentativas','Tentativas']]
+  const semanas = semanasDisponiveis()
+  const carteiraAtiva = dados?.equipe.some(p => Object.hasOwn(p,'ainda_atribuidos'))
+  const metricas = [...(carteiraAtiva?[['ainda_atribuidos','Ainda na carteira']]:[]),['recebidos','Recebidos no histórico'],['atendidos','Casos atendidos'],['tentativas','Tentativas']]
   return <section className="panel">
     <h2>Atendimentos por semana</h2>
     <div className="toolbar filtros-central">
-      <label>Semana de {dataBR(semana)}<input aria-label="Escolher dia da semana" type="date" value={semana} onChange={e=>{if(e.target.value)setSemana(segundaFeira(e.target.value))}}/></label>
+      <label>Semana<select value={semana} onChange={e=>setSemana(e.target.value)}>
+        {semanas.map(({segunda,rotulo})=><option key={segunda} value={segunda}>{rotulo}</option>)}
+      </select></label>
       <label>Colaborador<select value={autor} onChange={e=>setAutor(e.target.value)}><option value="">Todos</option>{equipe.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
       <label>Praça<input value={praca} onChange={e=>setPraca(e.target.value)} placeholder="Todas"/></label>
       <label>Prioridade atual<select value={prioridade} onChange={e=>setPrioridade(e.target.value)}><option value="">Todas</option><option value="alta">Alta</option><option value="media">Média</option><option value="reativacao">Reativação</option><option value="monitoramento">Monitoramento</option></select></label>
     </div>
     {consulta?.erro ? <p className="erro" role="alert">{consulta.erro}</p> : !dados ? <p role="status">Carregando indicadores…</p> : <>
-      <p>Recebidos e atendidos contam casos únicos por pessoa. Tempo até a primeira tentativa considera as atribuições com contato registrado na semana.</p>
-      <div className="table"><table><thead><tr>{['Colaborador',...metricas.map(([,rotulo])=>rotulo),'Recebidos sem tentativa','Mediana até a 1ª tentativa','Vencidos agora','Retornos hoje'].map(rotulo=><th scope="col" key={rotulo}>{rotulo}</th>)}</tr></thead>
+      <p>“Ainda na carteira” conta os casos da semana que seguem abertos com o mesmo responsável. O histórico inclui atribuições que foram removidas ou transferidas e preserva os contatos registrados.</p>
+      <div className="table"><table><thead><tr>{['Colaborador',...metricas.map(([,rotulo])=>rotulo),carteiraAtiva?'Na carteira sem tentativa':'Recebidos sem tentativa (histórico)','Mediana até a 1ª tentativa','Vencidos agora','Retornos hoje'].map(rotulo=><th scope="col" key={rotulo}>{rotulo}</th>)}</tr></thead>
       <tbody>{dados.equipe.map(p=><tr key={p.id}><th scope="row">{p.nome}</th>
         {metricas.map(([campo,rotulo])=><td key={campo}>{numero(p[campo])}<progress aria-label={rotulo+' de '+p.nome} value={p[campo]} max={Math.max(1,...dados.equipe.map(item=>item[campo]))}/></td>)}
-        <td>{numero(p.sem_tentativa)}</td><td>{p.mediana_horas===null?'—':numero(p.mediana_horas)+' h'}</td><td>{numero(p.vencidos)}</td><td>{numero(p.hoje)}</td>
+        <td>{numero(carteiraAtiva?p.pendentes_na_carteira:p.sem_tentativa)}</td><td>{p.mediana_horas===null?'—':numero(p.mediana_horas)+' h'}</td><td>{numero(p.vencidos)}</td><td>{numero(p.hoje)}</td>
       </tr>)}</tbody></table></div>
       <h3>Resultados registrados nos contatos</h3>
       {dados.equipe.some(p=>Object.keys(p.resultados).length) ? <div className="table"><table><thead><tr><th>Colaborador</th><th>Resultado</th><th>Tentativas</th></tr></thead><tbody>

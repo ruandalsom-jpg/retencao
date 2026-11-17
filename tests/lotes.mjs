@@ -78,4 +78,17 @@ assert.equal(relatorio.equipe[0].sem_tentativa,1)
 assert.ok(relatorio.equipe[0].mediana_horas>=0)
 assert.deepEqual(relatorio.fila.map(c=>c.id),['C2'])
 console.log('PASS: fila pessoal, isolamento, atribuições transferidas, tentativas e casos únicos.')
+await db.exec('reset role')
+for (const file of ['20261118000900_remover_atribuicoes.sql','20261118001300_atendimentos_carteira_atual.sql']) {
+  await db.exec(readFileSync(new URL(file,repo),'utf8'))
+}
+await as(supervisor)
+await query('select remover_atribuicoes($1::jsonb)',[JSON.stringify([{id:'C2',responsavel_id:samuel}])])
+const aposRemocao=(await query(painel,[samuel]))[0].dados
+assert.equal(aposRemocao.equipe[0].ainda_atribuidos,0)
+assert.equal(aposRemocao.equipe[0].pendentes_na_carteira,0)
+assert.equal(aposRemocao.equipe[0].recebidos,2)
+assert.equal(aposRemocao.equipe[0].tentativas,2)
+assert.equal(aposRemocao.fila.length,0)
+console.log('PASS: remoção da carteira preserva o histórico semanal.')
 await db.close()
