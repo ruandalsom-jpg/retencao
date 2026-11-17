@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
 import { Avatar, PerfilUsuario } from './perfil'
+import { MeuDia, PainelAtendimentos } from './atendimentos'
 import { indicador } from './indicadores.mjs'
 import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes, PainelEquipe, UsuariosAprovados } from './central'
 
@@ -130,7 +131,7 @@ function CRM({usuario,conta}) {
   const [recorteLote,setRecorteLote]=useState(null)
   const [soNovos,setSoNovos]=useState(false)
   const campos=selecaoCampos+(central.pronto?',ultima_semana,prioridade_atual,atribuido_em,visto_em':'')
-  const centralAberta=['Distribuição','Novidades','Lotes','Perfil'].includes(aba)
+  const centralAberta=['Distribuição','Novidades','Lotes','Perfil','Meu dia'].includes(aba)
   useEffect(()=>{
     if (!aviso) return
     const timer=setTimeout(()=>setAviso(''),4000)
@@ -159,7 +160,7 @@ function CRM({usuario,conta}) {
   },[perfil,supervisor,versao])
   useEffect(()=>{
     if (!perfil) return
-    if(['Distribuição','Novidades','Lotes','Perfil'].includes(aba)){setCarregando(false);return}
+    if(['Distribuição','Novidades','Lotes','Perfil','Meu dia'].includes(aba)){setCarregando(false);return}
     let ativo=true
     setCarregando(true)
     if (aba==='Acessos') {
@@ -340,7 +341,7 @@ function CRM({usuario,conta}) {
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
       {!centralAberta && carregando && exibidas.length>0 && <span className="atualizacao-discreta" role="status">Atualizando dados…</span>}
-      {aba==='Perfil'?null:centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} responsavelInicial={responsavelGestao} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
+      {aba==='Perfil'?null:aba==='Meu dia'?<MeuDia db={db} versao={versao} abrir={abrir}/>:centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} responsavelInicial={responsavelGestao} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
       carregando && exibidas.length===0 ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <><section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
@@ -358,7 +359,7 @@ function CRM({usuario,conta}) {
             <td>{item.praca}</td><td>{item.motivo}</td></tr>)}</tbody></table>
           <Paginacao coluna={c} mudar={p=>setPaginas({retornos:p})}/></div>)}
         </section> :
-        aba==='Dashboard' ? <>{central.pronto&&<PainelEquipe db={db} versao={versao}
+        aba==='Dashboard' ? <><PainelAtendimentos db={db} versao={versao} equipe={equipe} abrir={abrir}/>{central.pronto&&<PainelEquipe db={db} versao={versao}
           verEtapas={id=>{setFiltro(id);recorte()}}
           gerenciar={id=>{navegar('Distribuição');setResponsavelGestao(id)}}/>}<section className="panel"><h2>Casos por etapa{filtro && ' · '+(equipe.find(c=>c.id===filtro)?.nome||'Sem responsável')}</h2><div className="cards">{exibidas.map(c=><article key={c.etapa}>
           <small>{etapas[c.etapa]}</small><strong>{c.total}</strong>

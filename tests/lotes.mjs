@@ -55,4 +55,27 @@ assert.equal((await query('select count(*)::int n from casos'))[0].n,1)
 await as(outro)
 assert.equal((await query('select resumo_operacao() resumo'))[0].resumo.novos,1)
 console.log('PASS: migração, prioridade atual, lote auditado, conflito sem gravação parcial, RLS, leitura individual, importação idempotente, aviso consolidado, leitura concorrente e transferência.')
+
+await db.exec('reset role')
+await db.exec(readFileSync(new URL('20261118001200_painel_atendimentos.sql',repo),'utf8'))
+await db.exec(`update casos set proximo_contato=(now() at time zone 'America/Sao_Paulo')::date-1 where id='C2';
+insert into contatos(caso_id,autor_id,resultado)
+values ('C2','${samuel}','Respondeu'),('C2','${samuel}','Respondeu');`)
+await as(samuel)
+const fila=(await query('select meu_dia(0) fila'))[0].fila
+assert.equal(fila.vencidos,1)
+assert.deepEqual(fila.casos.map(c=>c.id),['C2'])
+const painel="select painel_atendimentos(date_trunc('week',now() at time zone 'America/Sao_Paulo')::date,$1,null,null) dados"
+await assert.rejects(query(painel,[samuel]),/supervisão/)
+await as(supervisor)
+const relatorio=(await query(painel,[samuel]))[0].dados
+assert.equal(relatorio.equipe[0].recebidos,2)
+assert.equal(relatorio.equipe[0].atendidos,1)
+assert.equal(relatorio.equipe[0].tentativas,2)
+assert.equal(relatorio.equipe[0].resultados.Respondeu,2)
+assert.equal(relatorio.equipe[0].vencidos,1)
+assert.equal(relatorio.equipe[0].sem_tentativa,1)
+assert.ok(relatorio.equipe[0].mediana_horas>=0)
+assert.deepEqual(relatorio.fila.map(c=>c.id),['C2'])
+console.log('PASS: fila pessoal, isolamento, atribuições transferidas, tentativas e casos únicos.')
 await db.close()

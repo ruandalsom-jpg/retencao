@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Avatar } from './perfil'
-import { Columns3, CalendarClock, Bell, UsersRound, Archive, LayoutDashboard, ShieldCheck, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Columns3, CalendarClock, Bell, UsersRound, Archive, LayoutDashboard, ShieldCheck, PanelLeftClose, PanelLeftOpen, ListTodo } from 'lucide-react'
 
 const campos='id,entregador_id,motivo,prioridade,prioridade_atual,semana_entrada,ultima_semana,praca,responsavel_id,aberto,etapa,proximo_contato,atribuido_em,visto_em'
 const dataHora=v=>v?new Date(v).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}):'—'
@@ -44,9 +44,9 @@ export function MenuLateral({perfil,aba,navegar,resumo,foto}) {
     <button className="recolher-menu" onClick={()=>setRecolhido(!recolhido)} aria-label={recolhido?'Expandir menu':'Recolher menu'} aria-expanded={!recolhido}>{recolhido?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button>
     <nav aria-label="Navegação principal">
       <small className="menu-grupo menu-texto">ACOMPANHAMENTO</small>
-      {[['Carteira',Columns3,'Carteira',resumo?.novos],['Retornos',CalendarClock,'Retornos',resumo?.retornos],['Novidades',Bell,'Novidades',resumo?.novidades],
+      {[['Meu dia',ListTodo,'Meu dia'],['Carteira',Columns3,'Carteira',resumo?.novos],['Retornos',CalendarClock,'Retornos',resumo?.retornos],['Novidades',Bell,'Novidades',resumo?.novidades],
         ...(perfil.papel==='supervisor'?[['Distribuição',UsersRound,'Distribuir casos'],['Lotes',Archive,'Histórico de lotes'],['Dashboard',LayoutDashboard,'Dashboard'],['Acessos',ShieldCheck,'Acessos']]:[])].map(([id,Icone,nome,numero],i)=><div key={id}>
-          {i===3 && <small className="menu-grupo menu-texto">GESTÃO</small>}
+          {i===4 && <small className="menu-grupo menu-texto">GESTÃO</small>}
           <button aria-label={nome+(numero?' · '+numero:'')} title={recolhido?nome:undefined} aria-current={aba===id?'page':undefined} onClick={()=>navegar(id)}><Icone size={18} aria-hidden="true"/><span className="menu-texto">{nome}</span>{numero>0 && <span className="menu-contador">{n(numero)}</span>}</button>
         </div>)}
     </nav>
