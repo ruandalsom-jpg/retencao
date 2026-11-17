@@ -24,3 +24,4 @@ input:not([type=checkbox]),select{min-width:0;background:#111c2e;color:inherit;b
 .kanban{display:grid;grid-template-columns:repeat(5,minmax(225px,1fr));gap:12px;overflow-x:auto;padding:6px 0 16px}
 .kanban-col{background:#111c2e;border-radius:14px;padding:12px;min-width:0}.kanban-col h2{font-size:16px}.kanban-col h3{font-size:15px;margin:8px 0}.kanban-col article{margin-bottom:10px;padding:12px}.kanban-col label{margin-top:10px}.kanban-col .toolbar{gap:5px}
 progress{width:100%;accent-color:#6ee7c0}
+.whatsapp{display:inline-block;color:#87ebc1;font-weight:700;margin-top:6px}

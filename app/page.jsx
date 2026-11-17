@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { hoje, normalize } from './operacao.mjs'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -84,6 +85,11 @@ function CRM({usuario}) {
   const [colunas,setColunas]=useState([])
   const [paginas,setPaginas]=useState({})
   const [semana,setSemana]=useState('')
+  const [praca,setPraca]=useState('')
+  const [recorteRetornos,setRecorteRetornos]=useState('todos')
+  const [linha,setLinha]=useState(null)
+  const [modoLinha,setModoLinha]=useState('evolucao')
+  const [erroLinha,setErroLinha]=useState('')
   const [filtro,setFiltro]=useState('')
   const [ids,setIds]=useState([])
   const [dono,setDono]=useState('')
@@ -123,12 +129,20 @@ function CRM({usuario}) {
       })
       return ()=>{ativo=false}
     }
-    const chaves=aba==='Distribuição'?['lote']:Object.keys(etapas)
+    const chaves=aba==='Distribuição'?['lote']:aba==='Retornos'?['retornos']:Object.keys(etapas)
     Promise.all(chaves.map(async etapa=>{
       const pagina=paginas[etapa]||0
       let consulta=db.from('casos').select(selecaoCampos,{count:'exact'}).order('semana_entrada',{ascending:false}).order('id')
       if (etapa==='lote') consulta=consulta.eq('aberto',true)
-      else consulta=consulta.eq('etapa',etapa)
+      else if (etapa==='retornos') {
+        consulta=db.from('casos').select(selecaoCampos,{count:'exact'}).eq('aberto',true)
+          .not('proximo_contato','is',null).order('proximo_contato').order('id')
+        const dia=hoje()
+        if (recorteRetornos==='vencidos') consulta=consulta.lt('proximo_contato',dia)
+        if (recorteRetornos==='hoje') consulta=consulta.eq('proximo_contato',dia)
+        if (recorteRetornos==='futuros') consulta=consulta.gt('proximo_contato',dia)
+      } else consulta=consulta.eq('etapa',etapa)
+      if (praca.trim()) consulta=consulta.ilike('praca','%'+praca.trim()+'%')
       if (semana) consulta=consulta.eq('semana_entrada',semana)
       if (supervisor && filtro) consulta=filtro==='livre'?consulta.is('responsavel_id',null):consulta.eq('responsavel_id',filtro)
       const {data,count,error}=await consulta.range(pagina*limite,pagina*limite+limite-1)
@@ -138,7 +152,40 @@ function CRM({usuario}) {
       .catch(e=>{if(ativo){setColunas([]);setErro(e.message)}})
       .finally(()=>{if(ativo)setCarregando(false)})
     return ()=>{ativo=false}
-  },[perfil,aba,paginas,semana,filtro,versao,supervisor])
+  },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos])
+
+  useEffect(()=>{
+    if (!supervisor || aba!=='Dashboard') return
+    let ativo=true
+    setLinha(null);setErroLinha('')
+    async function carregar() {
+      const consolidado=new Map()
+      const entrada=modoLinha==='entrada'
+      const caminho=entrada?'':'casos.'
+      const tamanho=500
+      for (let inicio=0; ativo; inicio+=tamanho) {
+        let consulta=entrada
+          ? db.from('casos').select('semana_entrada,prioridade').order('id')
+          : db.from('evolucao_semanal').select('semana,prioridade,casos!inner()').order('caso_id').order('semana')
+        if (semana) consulta=consulta.eq(caminho+'semana_entrada',semana)
+        if (praca.trim()) consulta=consulta.ilike(caminho+'praca','%'+praca.trim()+'%')
+        if (filtro) consulta=filtro==='livre'?consulta.is(caminho+'responsavel_id',null):consulta.eq(caminho+'responsavel_id',filtro)
+        const {data,error}=await consulta.range(inicio,inicio+tamanho-1)
+        if (error) throw error
+        for (const row of data) {
+          const periodo=row.semana || row.semana_entrada
+          const chave=normalize(row.prioridade)
+          const grupo=consolidado.get(periodo) || {alta:0,media:0,monitoramento:0,reativacao:0,outros:0}
+          grupo[Object.hasOwn(grupo,chave)?chave:'outros']++
+          consolidado.set(periodo,grupo)
+        }
+        if (data.length<tamanho) break
+      }
+      if (ativo) setLinha([...consolidado].sort(([a],[b])=>b.localeCompare(a)))
+    }
+    carregar().catch(()=>{if(ativo)setErroLinha('Não foi possível carregar a evolução semanal.')})
+    return ()=>{ativo=false}
+  },[supervisor,aba,semana,praca,filtro,modoLinha,versao])
 
   function recorte() { setPaginas({});setIds([]);setErro('');setAviso('');setDetalhe(null) }
   async function salvar(funcao, parametros, mensagem) {
@@ -154,12 +201,13 @@ function CRM({usuario}) {
   async function abrir(caso) {
     setOcupado(true);setErro('')
     try {
-      const [e,c]=await Promise.all([
+      const [e,c,origem]=await Promise.all([
         db.from('evolucao_semanal').select('semana,prioridade,indicadores').eq('caso_id',caso.id).order('semana',{ascending:false}).limit(52),
         db.from('contatos').select('id,canal,resultado,observacao,criado_em,retorno').eq('caso_id',caso.id).order('id',{ascending:false}).limit(100),
+        db.from('casos').select('dados_origem').eq('id',caso.id).maybeSingle(),
       ])
       if (e.error || c.error) throw e.error || c.error
-      setDetalhe({caso,evolucao:e.data,contatos:c.data})
+      setDetalhe({caso:{...caso,dados_origem:origem.data?.dados_origem},evolucao:e.data,contatos:c.data})
     } catch(e) {setErro(e.message)}
     finally {setOcupado(false)}
   }
@@ -172,9 +220,13 @@ function CRM({usuario}) {
       <button onClick={()=>{setErro('');reverPerfil(v=>v+1)}}>Verificar aprovação</button>
     </section>}
     {perfil && <>
-      <nav className="toolbar">{['Carteira',...(supervisor?['Distribuição','Dashboard','Acessos']:[])].map(t=><button key={t} aria-current={t===aba?'page':undefined} onClick={()=>{setAba(t);recorte()}}>{t}</button>)}</nav>
+      <nav className="toolbar">{['Carteira','Retornos',...(supervisor?['Distribuição','Dashboard','Acessos']:[])].map(t=><button key={t} aria-current={t===aba?'page':undefined} onClick={()=>{setAba(t);recorte()}}>{t}</button>)}</nav>
       {!detalhe && aba!=='Acessos' && <section className="panel toolbar" aria-label="Filtros">
         <label>Semana de entrada<input value={semana} placeholder="Todas · AAAA-W00" onChange={e=>{setSemana(e.target.value);recorte()}}/></label>
+        <label>Praça<input value={praca} placeholder="Todas" onChange={e=>{setPraca(e.target.value);recorte()}}/></label>
+        {aba==='Retornos' && <label>Prazo<select value={recorteRetornos} onChange={e=>{setRecorteRetornos(e.target.value);recorte()}}>
+          <option value="todos">Todos</option><option value="vencidos">Vencidos</option><option value="hoje">Hoje</option><option value="futuros">Futuros</option>
+        </select></label>}
         {supervisor && <label>Responsável<select value={filtro} onChange={e=>{setFiltro(e.target.value);recorte()}}><option value="">Todos</option><option value="livre">Sem responsável</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>}
       </section>}
       {detalhe ? <Detalhe {...detalhe} ocupado={ocupado} fechar={()=>setDetalhe(null)} salvar={salvar}/> :
@@ -187,10 +239,25 @@ function CRM({usuario}) {
             }}>Aprovar colaborador</button>
           </article>)}
         </section> :
-        aba==='Dashboard' ? <section className="panel"><h2>Casos por etapa</h2><div className="cards">{colunas.map(c=><article key={c.etapa}>
+        aba==='Retornos' ? <section className="panel"><h2>Retornos programados</h2>
+          {colunas.map(c=><div className="table" key={c.etapa}><table><thead><tr><th>Caso</th><th>Prazo</th><th>Situação</th><th>Praça</th><th>Motivo</th></tr></thead>
+          <tbody>{c.casos.map(item=><tr key={item.id}><th scope="row"><button disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></th>
+            <td>{item.proximo_contato.split('-').reverse().join('/')}</td><td>{item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}</td>
+            <td>{item.praca}</td><td>{item.motivo}</td></tr>)}</tbody></table>
+          <Paginacao coluna={c} mudar={p=>setPaginas({retornos:p})}/></div>)}
+        </section> :
+        aba==='Dashboard' ? <><section className="panel"><h2>Casos por etapa</h2><div className="cards">{colunas.map(c=><article key={c.etapa}>
           <small>{etapas[c.etapa]}</small><strong>{c.total}</strong>
           <progress value={c.total} max={Math.max(1,colunas.reduce((n,l)=>n+l.total,0))} aria-label={etapas[c.etapa]}/>
-        </article>)}</div></section> :
+        </article>)}</div></section>
+        <section className="panel"><h2>Prioridades por semana</h2>
+          <label>Visão<select value={modoLinha} onChange={e=>setModoLinha(e.target.value)}><option value="evolucao">Evolução dos casos</option><option value="entrada">Novos casos</option></select></label>
+          <p>O filtro de semana seleciona os casos pela semana de entrada.</p>
+          {erroLinha?<p role="alert">{erroLinha}</p>:linha===null?<p role="status">Carregando histórico…</p>:linha.length===0?<p>Sem registros no recorte.</p>:
+          <div className="table"><table><thead><tr>{['Semana','Alta','Média','Monitoramento','Reativação',...(linha.some(([,g])=>g.outros)?['Outras']:[])].map(t=><th scope="col" key={t}>{t}</th>)}</tr></thead>
+            <tbody>{linha.map(([s,g])=><tr key={s}><th scope="row">{s}</th>{['alta','media','monitoramento','reativacao',...(linha.some(([,v])=>v.outros)?['outros']:[])].map(k=><td key={k}>{g[k].toLocaleString('pt-BR')}</td>)}</tr>)}</tbody>
+          </table></div>}
+        </section></> :
         aba==='Distribuição' ? <section className="panel"><h2>Distribuição de lotes</h2>
           <div className="toolbar batch">
             <button onClick={()=>setIds(colunas[0]?.casos.filter(c=>c.responsavel_id!==dono).map(c=>c.id)||[])}>Selecionar página</button>
@@ -233,11 +300,26 @@ function Paginacao({coluna,mudar}) {
 
 function Detalhe({caso,contatos,evolucao,ocupado,fechar,salvar}) {
   const [acao,setAcao]=useState('manter')
+  const ultima=evolucao[0]
+  const ind=ultima?.indicadores
+  const origem=caso.dados_origem || {}
+  const bruto=String(ind?.dados_origem?.Celular || origem.Celular || '').replace(/[^0-9]/g,'')
+  const telefone=/^[0-9]{10,11}$/.test(bruto)?'55'+bruto:/^55[0-9]{10,11}$/.test(bruto)?bruto:''
+  const recente=normalize(ind?.motivo || caso.motivo)
+  const pergunta=recente.includes('inativ')?'O que impediu você de operar e quando conseguiria voltar?':
+    recente.includes('queda')?'O que mudou na sua disponibilidade ou na região onde você opera?':'O que ajudaria você a retomar ou manter a operação?'
   return <section className="panel"><button onClick={fechar}>Voltar</button>
     <h2>{caso.motivo} · {caso.praca}</h2><p>{caso.id} · {etapas[caso.etapa]}</p>
+    {caso.aberto && <article><h3>Antes da chamada</h3><p>{pergunta}</p>
+      {contatos[0] && <p>Último contato · {contatos[0].resultado}</p>}
+      {telefone && <a className="whatsapp" href={'https://wa.me/'+telefone} target="_blank" rel="noreferrer">Abrir WhatsApp</a>}
+    </article>}
+    {ultima && <><h3>Última semana registrada · {ultima.semana}</h3>
+      <p>{ind?.motivo || caso.motivo} · {ultima.prioridade}</p>
+      <div className="cards">{[['Horas online',ind?.horas_online],['Pedidos',ind?.pedidos],['Ofertas',ind?.ofertas],['Rejeição (%)',ind?.rejeicao_pct]].map(([nome,valor])=><article key={nome}><small>{nome}</small><strong>{valor==null||valor===''?'—':valor}</strong></article>)}</div></>}
     <h3>Evolução semanal</h3>
-    <div className="table"><table><thead><tr><th>Semana</th><th>Prioridade</th><th>Horas online</th><th>Pedidos</th></tr></thead>
-      <tbody>{evolucao.map(e=><tr key={e.semana}><td>{e.semana}</td><td>{e.prioridade}</td><td>{e.indicadores?.horas_online||'—'}</td><td>{e.indicadores?.pedidos||'—'}</td></tr>)}</tbody></table></div>
+    <div className="table"><table><thead><tr><th>Semana</th><th>Prioridade</th><th>Horas online</th><th>Pedidos</th><th>Ofertas</th><th>Rejeição (%)</th></tr></thead>
+      <tbody>{evolucao.map(e=><tr key={e.semana}><td>{e.semana}</td><td>{e.prioridade}</td><td>{e.indicadores?.horas_online||'—'}</td><td>{e.indicadores?.pedidos??'—'}</td><td>{e.indicadores?.ofertas??'—'}</td><td>{e.indicadores?.rejeicao_pct||'—'}</td></tr>)}</tbody></table></div>
     <h3>Histórico de contatos</h3>
     {contatos.length?contatos.map(c=><p key={c.id}><b>{c.resultado}</b> · {c.canal} · {new Date(c.criado_em).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}<br/>{c.observacao}</p>):<p>Nenhum contato registrado.</p>}
     {caso.aberto && <form onSubmit={e=>{
