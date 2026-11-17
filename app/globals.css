@@ -41,3 +41,24 @@ progress{width:100%;accent-color:#6ee7c0}
 .dados-driver div{background:#111c2e;border-radius:9px;padding:10px;min-width:0}
 .dados-driver dt{font-size:12px;color:#adc6df}.dados-driver dd{margin:4px 0 0;overflow-wrap:anywhere}
 .carteira-lista .caso-linha{cursor:pointer}.carteira-lista .caso-linha:focus-within{background:#1b3046}
+.kanban{gap:14px;align-items:start;grid-template-columns:repeat(5,minmax(215px,1fr))}
+.kanban-col{--etapa:#7693ad;background:#edf2f7;color:#253850;padding:8px;border:2px solid transparent}
+.coluna-em_contato{--etapa:#5187db}.coluna-aguardando{--etapa:#db9c32}
+.coluna-recuperado{--etapa:#39a683}.coluna-encerrado{--etapa:#8e8599}
+.kanban-col.recebendo{border-color:#307ed1;background:#dbeaff}
+.kanban-col h2{display:flex;justify-content:space-between;align-items:center;gap:6px;background:white;border-top:4px solid var(--etapa);border-radius:8px;padding:10px;margin:0 0 9px}
+.kanban-col small{color:#4c6178}.kanban-col h2 small{background:#eaf0f7;border-radius:20px;padding:2px 7px}
+.kanban-col .kanban-card{background:#fff;color:#233347;border:1px solid #d5e0eb;border-radius:9px;box-shadow:0 2px 5px #16375412}
+.kanban-card[draggable=true]{cursor:grab}.kanban-card[data-arrastando=true]{opacity:.48}
+.kanban-card p{margin:4px 0 8px;color:#50647a;font-size:.85rem}
+.kanban-meta{display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap}
+.kanban-card .kanban-abrir{border:0;background:none;color:#133d66;text-align:left;padding:0;font-weight:700}
+.kanban-abrir:hover{text-decoration:underline}
+.kanban-responsavel{border-top:1px solid #e7edf4;margin-top:9px;padding-top:8px;font-size:.8rem;color:#425d76}
+.kanban-col label{color:#425d76}.kanban-col select,.kanban-col .toolbar button{background:#f8fbfe;color:#263b53;border:1px solid #bfccda;font-size:.8rem}
+.painel-caso{position:fixed;inset:0 0 0 auto;margin:0;width:min(680px,100%);max-width:100%;height:100dvh;max-height:100dvh;overflow:auto;background:#0f1929;color:#edf2fa;border:0;border-left:1px solid #3d5270;padding:0}
+.painel-caso::backdrop{background:#030a16aa}
+.painel-caso-conteudo{padding:16px}
+.painel-caso-conteudo>header{position:sticky;top:0;z-index:1;background:#0f1929;border-bottom:1px solid #344a66;padding:10px 0}
+.painel-caso-conteudo>header h2{margin:0}
+body:has(.painel-caso[open]){overflow:hidden}

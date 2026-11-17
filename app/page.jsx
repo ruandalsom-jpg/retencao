@@ -2,7 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -12,6 +12,7 @@ const etapas = { novo:'Novos casos', em_contato:'Em contato', aguardando:'Aguard
 const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato'
 const limiteLista = 20
 const limiteKanban = 5
+const etapasAbertas = Object.keys(etapas).slice(0, 3)
 
 function Badge({valor}) {
   const chave=normalize(valor).replace(/[^a-z0-9]+/g,'-')
@@ -185,7 +186,14 @@ function CRM({usuario}) {
       const {data,count,error}=await consulta.range(pagina*limite,pagina*limite+limite-1)
       if (error) throw error
       return {etapa,pagina,limite,total:count,casos:data}
-    })).then(dados=>{if(ativo)setColunas(dados.map(coluna=>({...coluna,aba,visao})))})
+    })).then(dados=>{
+      if (!ativo) return
+      const ajustes=dados.filter(c=>c.pagina>Math.max(0,Math.ceil(c.total/c.limite)-1))
+      if (ajustes.length) setPaginas(valor=>({...valor,...Object.fromEntries(
+        ajustes.map(c=>[c.etapa,Math.max(0,Math.ceil(c.total/c.limite)-1)])
+      )}))
+      else setColunas(dados.map(coluna=>({...coluna,aba,visao})))
+    })
       .catch(e=>{if(ativo){setColunas([]);setErro(e.message)}})
       .finally(()=>{if(ativo)setCarregando(false)})
     return ()=>{ativo=false}
@@ -232,7 +240,7 @@ function CRM({usuario}) {
     try {
       const {error}=await db.rpc(funcao,parametros)
       if (error) throw error
-      setDetalhe(null);setIds([]);setPaginas({});reler(v=>v+1);setAviso(mensagem)
+      setDetalhe(null);setIds([]);reler(v=>v+1);setAviso(mensagem)
     } catch(e) {setErro(e.message)}
     finally {setOcupado(false)}
   }
@@ -267,7 +275,7 @@ function CRM({usuario}) {
     </section>}
     {perfil && <>
       <nav className="toolbar">{['Carteira','Retornos',...(supervisor?['Distribuição','Dashboard','Acessos']:[])].map(t=><button key={t} aria-current={t===aba?'page':undefined} onClick={()=>{setAba(t);recorte()}}>{t}</button>)}</nav>
-      {!detalhe && aba!=='Acessos' && <section className="panel toolbar" aria-label="Filtros">
+      {aba!=='Acessos' && <section className="panel toolbar" aria-label="Filtros">
         {(aba==='Carteira'||aba==='Distribuição') && <>
           <label>Buscar caso, UUID ou motivo<input value={busca} onChange={e=>{setBusca(e.target.value);recorte()}}/></label>
           <label>Prioridade de entrada<select value={prioridade} onChange={e=>{setPrioridade(e.target.value);recorte()}}>
@@ -285,18 +293,10 @@ function CRM({usuario}) {
         {supervisor && <label>Responsável<select value={filtro} onChange={e=>{setFiltro(e.target.value);recorte()}}><option value="">Todos</option><option value="livre">Sem responsável</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>}
         <button onClick={()=>{setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setRecorteRetornos('todos');recorte()}}>Limpar filtros</button>
       </section>}
-      {!detalhe && aba==='Carteira' && <div className="toolbar visualizacao" aria-label="Visualização da carteira">
+      {aba==='Carteira' && <div className="toolbar visualizacao" aria-label="Visualização da carteira">
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
-      {detalhe ? (detalhe.carregando || detalhe.erro
-        ? <section className="panel" aria-busy={!!detalhe.carregando}>
-            <button onClick={()=>setDetalhe(null)}>Voltar à lista</button>
-            <h2>Caso {detalhe.caso.id}</h2>
-            {detalhe.carregando ? <p role="status">Carregando dados e histórico…</p> :
-              <><p role="alert">{detalhe.erro}</p><button onClick={()=>abrir(detalhe.caso)}>Tentar novamente</button></>}
-          </section>
-        : <Detalhe {...detalhe} ocupado={ocupado} fechar={()=>setDetalhe(null)} salvar={salvar}/>) :
-        carregando ? <p role="status">Carregando carteira…</p> :
+      {carregando ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
           {pedidos.map(p=><article className="toolbar" key={p.id}><span><b>{p.nome}</b><small className="block">{p.email}</small></span>
@@ -351,21 +351,80 @@ function CRM({usuario}) {
             </tr>
           })}</tbody></table><Paginacao coluna={c} mudar={p=>setPaginas({lista:p})}/></div>)}
         </section> :
-        <section aria-label="Carteira em Kanban" className="kanban">{exibidas.map(c=><section className="kanban-col" key={c.etapa}>
-          <h2>{etapas[c.etapa]} <small>{c.total}</small></h2>
-          {c.casos.map(item=><article key={item.id}>
-            <small>{item.semana_entrada}</small> <Badge valor={item.prioridade}/>
-            <h3>{item.motivo}</h3><p>{item.praca}</p>
-            {item.proximo_contato && <p>Retorno em {item.proximo_contato}</p>}
-            <button disabled={ocupado} onClick={()=>abrir(item)}>Abrir caso</button>
-            {item.aberto && <label>Mover para<select disabled={ocupado} value={item.etapa} onChange={e=>salvar('mover_caso',{p_id:item.id,p_etapa:e.target.value},'Etapa atualizada.')}>
-              {Object.entries(etapas).slice(0,3).map(([id,t])=><option key={id} value={id}>{t}</option>)}
-            </select></label>}
-          </article>)}
-          <Paginacao coluna={c} mudar={p=>setPaginas({...paginas,[c.etapa]:p})}/>
-        </section>)}</section>}
+        <Kanban colunas={exibidas} ocupado={ocupado} abrir={abrir}
+          nomeResponsavel={id=>equipe.find(p=>p.id===id)?.nome || (id===usuario?perfil.nome:id?'Atribuído':'Sem responsável')}
+          mover={(id,etapa)=>salvar('mover_caso',{p_id:id,p_etapa:etapa},'Etapa atualizada.')}
+          mudarPagina={(etapa,pagina)=>setPaginas(anterior=>({...anterior,[etapa]:pagina}))}/>}
+      {detalhe && <PainelCaso fechar={()=>setDetalhe(null)}>
+        {erro && <p className="erro" role="alert">{erro}</p>}
+        {detalhe.carregando || detalhe.erro
+          ? <section className="panel" aria-busy={!!detalhe.carregando}>
+              <h2>Caso {detalhe.caso.id}</h2>
+              {detalhe.carregando ? <p role="status">Carregando dados e histórico…</p> :
+                <><p role="alert">{detalhe.erro}</p><button onClick={()=>abrir(detalhe.caso)}>Tentar novamente</button></>}
+            </section>
+          : <Detalhe {...detalhe} ocupado={ocupado} salvar={salvar}/>}
+      </PainelCaso>}
     </>}
   </main>
+}
+
+function PainelCaso({fechar,children}) {
+  const ref=useRef(null)
+  useEffect(()=>{
+    const dialog=ref.current
+    dialog.showModal()
+    return ()=>dialog.close()
+  },[])
+  return <dialog ref={ref} className="painel-caso" aria-labelledby="painel-caso-titulo"
+    onCancel={e=>{e.preventDefault();fechar()}}
+    onClick={e=>{if(e.target===e.currentTarget)fechar()}}>
+    <div className="painel-caso-conteudo">
+      <header><h2 id="painel-caso-titulo">Atendimento do entregador</h2>
+        <button onClick={fechar} aria-label="Fechar atendimento">Fechar</button>
+      </header>
+      {children}
+    </div>
+  </dialog>
+}
+
+function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
+  const [arrastado,setArrastado]=useState(null)
+  const [alvo,setAlvo]=useState('')
+  function limpar() { setArrastado(null);setAlvo('') }
+  return <section aria-label="Carteira em Kanban" className="kanban">{colunas.map(c=>{
+    const podeReceber=!ocupado && arrastado && etapasAbertas.includes(c.etapa) && arrastado.etapa!==c.etapa
+    return <section key={c.etapa} className={'kanban-col coluna-'+c.etapa+(alvo===c.etapa?' recebendo':'')}
+      onDragOver={e=>{if(podeReceber){e.preventDefault();e.dataTransfer.dropEffect='move';setAlvo(c.etapa)}}}
+      onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setAlvo('')}}
+      onDrop={e=>{
+        if(!podeReceber)return
+        e.preventDefault()
+        mover(arrastado.id,c.etapa)
+        limpar()
+      }}>
+      <h2>{etapas[c.etapa]} <small>{c.total}</small></h2>
+      {c.casos.map(item=><article key={item.id} className="kanban-card"
+        data-arrastando={arrastado?.id===item.id}
+        draggable={item.aberto&&!ocupado}
+        onDragStart={e=>{
+          e.dataTransfer.effectAllowed='move'
+          e.dataTransfer.setData('text/plain',item.id)
+          setArrastado({id:item.id,etapa:item.etapa})
+        }} onDragEnd={limpar}>
+        <div className="kanban-meta"><small>{item.semana_entrada}</small><Badge valor={item.prioridade}/></div>
+        <h3><button className="kanban-abrir" disabled={ocupado} onClick={()=>abrir(item)}>{item.motivo || item.id}</button></h3>
+        <p>{item.praca}</p>
+        {item.proximo_contato && <Badge valor={item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}/>}
+        {item.proximo_contato && <small> {dataBR(item.proximo_contato)}</small>}
+        <div className="kanban-responsavel">{nomeResponsavel(item.responsavel_id)}</div>
+        {item.aberto && <label>Mover para<select disabled={ocupado} value={item.etapa} onChange={e=>mover(item.id,e.target.value)}>
+          {etapasAbertas.map(id=><option key={id} value={id}>{etapas[id]}</option>)}
+        </select></label>}
+      </article>)}
+      <Paginacao coluna={c} mudar={p=>mudarPagina(c.etapa,p)}/>
+    </section>
+  })}</section>
 }
 
 function Paginacao({coluna,mudar}) {
@@ -379,7 +438,7 @@ function Paginacao({coluna,mudar}) {
   </div>
 }
 
-function Detalhe({caso,contatos,evolucao,ocupado,fechar,salvar}) {
+function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
   const [acao,setAcao]=useState('manter')
   const ultima=evolucao[0]
   const ind=ultima?.indicadores
@@ -389,7 +448,7 @@ function Detalhe({caso,contatos,evolucao,ocupado,fechar,salvar}) {
   const recente=normalize(ind?.motivo || caso.motivo)
   const pergunta=recente.includes('inativ')?'O que impediu você de operar e quando conseguiria voltar?':
     recente.includes('queda')?'O que mudou na sua disponibilidade ou na região onde você opera?':'O que ajudaria você a retomar ou manter a operação?'
-  return <section className="panel"><button onClick={fechar}>Voltar</button>
+  return <section className="panel">
     <div className="caso-diagnostico"><small>{caso.id} · Entrada {caso.semana_entrada}</small>
     <h2>{ind?.motivo || caso.motivo}</h2><Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>
     {Number(ind?.semanas_inativo)>0 && <p>{ind.semanas_inativo} semana(s) sem produção</p>}</div>
