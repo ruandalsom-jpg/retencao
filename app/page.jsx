@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
 import { Avatar, PerfilUsuario } from './perfil'
 import { indicador } from './indicadores.mjs'
-import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes } from './central'
+import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes, PainelEquipe } from './central'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -126,6 +126,7 @@ function CRM({usuario,conta}) {
   const [detalhe,setDetalhe]=useState(null)
   const supervisor=perfil?.papel==='supervisor'
   const central=useCentral(db,perfil,versao)
+  const [responsavelGestao,setResponsavelGestao]=useState('')
   const [recorteLote,setRecorteLote]=useState(null)
   const [soNovos,setSoNovos]=useState(false)
   const campos=selecaoCampos+(central.pronto?',ultima_semana,prioridade_atual,atribuido_em,visto_em':'')
@@ -262,7 +263,7 @@ function CRM({usuario,conta}) {
 
   const exibidas=colunas.filter(c=>c.aba===aba && c.visao===visao)
   function recorte() { setPaginas({});setIds([]);setErro('');setAviso('');setDetalhe(null) }
-  function navegar(novaAba){setAba(novaAba);setRecorteLote(null);setSoNovos(false);recorte()}
+  function navegar(novaAba){setResponsavelGestao('');setAba(novaAba);setRecorteLote(null);setSoNovos(false);recorte()}
   function abrirRecorte(selecao){setRecorteLote(selecao);setSoNovos(false);setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setVisao('lista');setAba('Carteira');recorte()}
   async function salvar(funcao, parametros, mensagem) {
     if (ocupado) return
@@ -335,7 +336,7 @@ function CRM({usuario,conta}) {
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
       {!centralAberta && carregando && exibidas.length>0 && <span className="atualizacao-discreta" role="status">Atualizando dados…</span>}
-      {aba==='Perfil'?null:centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
+      {aba==='Perfil'?null:centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} responsavelInicial={responsavelGestao} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
       carregando && exibidas.length===0 ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
@@ -352,7 +353,9 @@ function CRM({usuario,conta}) {
             <td>{item.praca}</td><td>{item.motivo}</td></tr>)}</tbody></table>
           <Paginacao coluna={c} mudar={p=>setPaginas({retornos:p})}/></div>)}
         </section> :
-        aba==='Dashboard' ? <><section className="panel"><h2>Casos por etapa</h2><div className="cards">{exibidas.map(c=><article key={c.etapa}>
+        aba==='Dashboard' ? <>{central.pronto&&<PainelEquipe db={db} versao={versao}
+          verEtapas={id=>{setFiltro(id);recorte()}}
+          gerenciar={id=>{navegar('Distribuição');setResponsavelGestao(id)}}/>}<section className="panel"><h2>Casos por etapa{filtro && ' · '+(equipe.find(c=>c.id===filtro)?.nome||'Sem responsável')}</h2><div className="cards">{exibidas.map(c=><article key={c.etapa}>
           <small>{etapas[c.etapa]}</small><strong>{c.total}</strong>
           <progress value={c.total} max={Math.max(1,colunas.reduce((n,l)=>n+l.total,0))} aria-label={etapas[c.etapa]}/>
         </article>)}</div></section>

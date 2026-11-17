@@ -63,8 +63,8 @@ export function CentralPendente({central}) {
 function Prioridade({valor}) {return <span className={'badge badge-'+({'Alta':'alta','Media':'media','Média':'media','Reativacao':'reativacao','Reativação':'reativacao','Monitoramento':'monitoramento'}[valor]||'')}>{valor==='Media'?'Média':valor||'—'}</span>}
 function Paginas({pagina,total,limite=20,mudar,ocupado}) {return <div className="toolbar paginacao-central"><small>{n(total)} registros · página {pagina+1} de {Math.max(1,Math.ceil(total/limite))}</small><button disabled={ocupado||pagina===0} onClick={()=>mudar(pagina-1)}>Anterior</button><button disabled={ocupado||(pagina+1)*limite>=total} onClick={()=>mudar(pagina+1)}>Próxima</button></div>}
 
-export function Distribuicao({db,abrir,concluido}) {
-  const [filtros,setFiltros]=useState({prioridade:'',tipo:'prioridade_atual',semana:'',praca:'',responsavel:'livre'})
+export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
+  const [filtros,setFiltros]=useState({prioridade:'',tipo:'prioridade_atual',semana:'',praca:'',responsavel:responsavelInicial||'livre'})
   const [pagina,setPagina]=useState(0),[total,setTotal]=useState(0),[casos,setCasos]=useState([])
   const [equipe,setEquipe]=useState([]),[selecionados,setSelecionados]=useState([]),[destino,setDestino]=useState('')
   const [titulo,setTitulo]=useState(''),[revisao,setRevisao]=useState(null),[erro,setErro]=useState(''),[aviso,setAviso]=useState('')
@@ -104,9 +104,15 @@ export function Distribuicao({db,abrir,concluido}) {
   async function enviar(){
     if(trava.current)return;trava.current=true;setSalvando(true);setErro('')
     try{
-      const {error}=await db.rpc('distribuir_lote',{p_casos:revisao.casos.map(c=>({id:c.id,responsavel_id:c.responsavel_id})),p_responsavel:revisao.destino,p_titulo:revisao.titulo})
-      if(error)throw error
-      setAviso('Lote enviado para '+revisao.nome+'. O aviso já está disponível na conta do colaborador.')
+      const casos=revisao.casos.map(({id,responsavel_id})=>({id,responsavel_id}))
+      const {error}=revisao.remover
+        ? await db.rpc('remover_atribuicoes',{p_casos:casos})
+        : await db.rpc('distribuir_lote',{p_casos:casos,p_responsavel:revisao.destino,p_titulo:revisao.titulo})
+      if(error){
+        if(revisao.remover && error.code==='PGRST202')throw Error('Execute a migração de remoção no Supabase para liberar esta ação.')
+        throw error
+      }
+      setAviso(revisao.remover?'Casos devolvidos à fila sem responsável.':'Lote enviado para '+revisao.nome+'.')
       setSelecionados([]);setRevisao(null);setTitulo('');setVersao(v=>v+1);concluido()
     }catch(e){setErro(e.message);setRevisao(null);setSelecionados([]);setVersao(v=>v+1)}finally{trava.current=false;setSalvando(false)}
   }
@@ -134,13 +140,15 @@ export function Distribuicao({db,abrir,concluido}) {
         <label>Enviar para<select value={destino} onChange={e=>setDestino(e.target.value)}><option value="">Escolha um colaborador</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome} · {n(c.ativos)} ativos</option>)}</select></label>
         <button className="primary" disabled={!selecionados.length||!colaborador||jaDoDestino>0||carregando} onClick={()=>setRevisao({casos:[...selecionados],destino,nome:colaborador.nome,titulo:titulo.trim()||'Lote '+[...new Set(selecionados.map(c=>c.ultima_semana||c.semana_entrada))].sort().join(' / ')})}>Revisar lote</button>
       </div>{colaborador&&<p>Carteira de {colaborador.nome}: {n(colaborador.ativos)} → {n(Number(colaborador.ativos)+selecionados.length-jaDoDestino)} casos ativos.</p>}
+      <button disabled={carregando||!selecionados.length||selecionados.some(c=>!c.responsavel_id)}
+        onClick={()=>setRevisao({remover:true,casos:[...selecionados],titulo:'Remover responsável'})}>Remover responsável</button>
       {jaDoDestino>0&&<p className="erro">Remova {jaDoDestino} caso(s) que já pertencem ao destinatário.</p>}</section>
     </fieldset>
     {revisao&&<section className="panel revisao-lote" aria-labelledby="revisao-lote-titulo"><h2 id="revisao-lote-titulo">Revisar envio · {revisao.titulo}</h2>
-      <p><b>{revisao.casos.length} casos → {revisao.nome}</b></p><p>Últimas semanas: {[...new Set(revisao.casos.map(c=>c.ultima_semana||c.semana_entrada))].sort().join(', ')}.</p>
+      {revisao.remover?<p><b>{revisao.casos.length} casos voltarão para a fila sem responsável.</b> A etapa e o histórico de atendimento serão preservados.</p>:<><p><b>{revisao.casos.length} casos → {revisao.nome}</b></p><p>Últimas semanas: {[...new Set(revisao.casos.map(c=>c.ultima_semana||c.semana_entrada))].sort().join(', ')}.</p>
       <p>{revisao.casos.filter(c=>c.responsavel_id).length} transferências de outros responsáveis. Os demais casos estão sem responsável.</p>
-      <p>O colaborador receberá um aviso com acesso direto ao lote. A etapa e o histórico dos casos serão preservados.</p>
-      <div className="toolbar"><button disabled={salvando} onClick={()=>setRevisao(null)}>Voltar à seleção</button><button className="primary" disabled={salvando} onClick={enviar}>{salvando?'Enviando…':'Confirmar envio'}</button></div>
+      <p>O colaborador receberá um aviso com acesso direto ao lote. A etapa e o histórico dos casos serão preservados.</p></>}
+      <div className="toolbar"><button disabled={salvando} onClick={()=>setRevisao(null)}>Voltar à seleção</button><button className="primary" disabled={salvando} onClick={enviar}>{salvando?'Salvando…':revisao.remover?'Confirmar remoção':'Confirmar envio'}</button></div>
     </section>}
   </section>
 }
@@ -178,5 +186,33 @@ export function HistoricoLotes({db,tick,abrirRecorte}) {
   return <section className="panel"><h2>Histórico de distribuição</h2>{erro&&<p className="erro" role="alert">{erro}</p>}
     <div className="table"><table><thead><tr>{['Lote','Destinatário','Casos','Semanas','Distribuído por','Data','Ação'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{dados.map(l=><tr key={l.id}><td>{l.titulo}</td><td>{l.destino?.nome||'—'}</td><td>{l.quantidade}</td><td>{[...new Set(l.lote_itens.map(i=>i.ultima_semana))].sort().join(', ')}</td><td>{l.autor?.nome||'—'}</td><td>{dataHora(l.criado_em)}</td><td><button onClick={()=>abrirRecorte({tipo:'lote',id:l.id,titulo:l.titulo})}>Abrir lote</button></td></tr>)}</tbody></table></div>
     {!carregando&&!dados.length&&<p>Nenhum lote registrado na nova central.</p>}<Paginas pagina={pagina} total={total} ocupado={carregando} mudar={setPagina}/>
+  </section>
+}
+
+export function PainelEquipe({db,versao,verEtapas,gerenciar}) {
+  const [equipe,setEquipe]=useState(null)
+  const [erro,setErro]=useState(false)
+  useEffect(()=>{
+    let ativo=true
+    db.rpc('carga_colaboradores').then(({data,error})=>{
+      if(!ativo)return
+      setErro(!!error)
+      if(!error)setEquipe(data||[])
+    }).catch(()=>{if(ativo)setErro(true)})
+    return()=>{ativo=false}
+  },[db,versao])
+  const maximo=Math.max(1,...(equipe||[]).map(c=>Number(c.ativos)))
+  const maxRetornos=Math.max(1,...(equipe||[]).map(c=>Number(c.retornos)))
+  return <section className="panel">
+    <h2>Carteira por colaborador</h2>
+    <p>Totais da equipe. Use “Ver etapas” para aplicar o colaborador aos gráficos do Dashboard.</p>
+    {erro?<p role="alert">Não foi possível carregar a equipe.</p>:!equipe?<p role="status">Carregando equipe…</p>:!equipe.length?<p>Nenhum colaborador cadastrado.</p>:
+      <div className="table"><table><thead><tr><th>Colaborador</th><th>Casos ativos</th><th>Retornos até hoje</th><th>Novos por abrir</th><th>Ações</th></tr></thead>
+        <tbody>{equipe.map(c=><tr key={c.id}><th scope="row">{c.nome}</th>
+          <td>{n(c.ativos)}<progress aria-label={c.nome+' — casos ativos'} value={c.ativos} max={maximo}/></td>
+          <td>{n(c.retornos)}<progress aria-label={c.nome+' — retornos até hoje'} value={c.retornos} max={maxRetornos}/></td>
+          <td>{n(c.novos)}</td><td><div className="toolbar"><button onClick={()=>verEtapas(c.id)}>Ver etapas</button><button onClick={()=>gerenciar(c.id)}>Gerenciar casos</button></div></td>
+        </tr>)}</tbody>
+      </table></div>}
   </section>
 }
