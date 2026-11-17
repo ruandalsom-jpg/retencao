@@ -112,6 +112,8 @@ function CRM({usuario,conta}) {
   const [colunas,setColunas]=useState([])
   const [paginas,setPaginas]=useState({})
   const [semana,setSemana]=useState('')
+  const [semanasEntrada,setSemanasEntrada]=useState(null)
+  const [erroSemanas,setErroSemanas]=useState(false)
   const [visao,setVisao]=useState('lista')
   const [busca,setBusca]=useState('')
   const [prioridade,setPrioridade]=useState('')
@@ -126,6 +128,25 @@ function CRM({usuario,conta}) {
   const [dono,setDono]=useState('')
   const [detalhe,setDetalhe]=useState(null)
   const supervisor=perfil?.papel==='supervisor'
+  useEffect(()=>{
+    if(!perfil || !['Carteira','Dashboard','Retornos'].includes(aba))return
+    let ativo=true
+    setErroSemanas(false)
+    async function carregarSemanas(){
+      const semanas=[]
+      while(ativo){
+        let consulta=db.from('casos').select('semana_entrada').order('semana_entrada',{ascending:false}).limit(1)
+        if(semanas.length)consulta=consulta.lt('semana_entrada',semanas.at(-1))
+        const {data,error}=await consulta
+        if(error)throw error
+        if(!data.length)break
+        semanas.push(data[0].semana_entrada)
+      }
+      if(ativo)setSemanasEntrada(semanas)
+    }
+    carregarSemanas().catch(()=>{if(ativo)setErroSemanas(true)})
+    return()=>{ativo=false}
+  },[perfil,aba,versao])
   const central=useCentral(db,perfil,versao)
   const [responsavelGestao,setResponsavelGestao]=useState('')
   const [recorteLote,setRecorteLote]=useState(null)
@@ -327,7 +348,11 @@ function CRM({usuario,conta}) {
             <option value="">Todas</option>{Object.entries(etapas).map(([id,nome])=><option key={id} value={id}>{nome}</option>)}
           </select></label>
         </>}
-        <label>Semana de entrada<input value={semana} placeholder="Todas · AAAA-W00" onChange={e=>{setSemana(e.target.value);recorte()}}/></label>
+        <label>Semana de entrada<select value={semana} disabled={!semanasEntrada} onChange={e=>{setSemana(e.target.value);recorte()}}>
+          <option value="">{erroSemanas&&!semanasEntrada?'Semanas indisponíveis':semanasEntrada?'Todas':'Carregando semanas…'}</option>
+          {semana&&!semanasEntrada?.includes(semana)&&<option value={semana}>{semana}</option>}
+          {semanasEntrada?.map(item=><option key={item} value={item}>{item}</option>)}
+        </select></label>
         <label>Praça<input value={praca} placeholder="Todas" onChange={e=>{setPraca(e.target.value);recorte()}}/></label>
         {aba==='Retornos' && <label>Prazo<select value={recorteRetornos} onChange={e=>{setRecorteRetornos(e.target.value);recorte()}}>
           <option value="todos">Todos</option><option value="vencidos">Vencidos</option><option value="hoje">Hoje</option><option value="futuros">Futuros</option>
