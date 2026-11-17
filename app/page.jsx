@@ -174,7 +174,7 @@ function CRM({usuario,conta}) {
     Promise.all(chaves.map(async etapa=>{
       const pagina=paginas[etapa]||0
       const limite=aba==='Carteira' && visao==='kanban' ? limiteKanban : limiteLista
-      let consulta=db.from('casos').select(campos,{count:'exact'}).order('semana_entrada',{ascending:false}).order('id')
+      let consulta=db.from('casos').select(campos,{count:'exact'})
       if (etapa==='lote') consulta=consulta.eq('aberto',true)
       else if (etapa==='retornos') {
         consulta=db.from('casos').select(campos,{count:'exact'}).eq('aberto',true)
@@ -185,7 +185,6 @@ function CRM({usuario,conta}) {
         if (recorteRetornos==='futuros') consulta=consulta.gt('proximo_contato',dia)
       } else if (etapa==='lista') {
         consulta=db.from('casos').select(campos+',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade)',{count:'exact'})
-          .order('semana_entrada',{ascending:false}).order('id')
           .order('semana',{referencedTable:'evolucao_semanal',ascending:false})
           .limit(1,{referencedTable:'evolucao_semanal'})
       } else consulta=consulta.eq('etapa',etapa)
@@ -199,6 +198,10 @@ function CRM({usuario,conta}) {
       if (semana) consulta=consulta.eq('semana_entrada',semana)
       if (supervisor && filtro) consulta=filtro==='livre'?consulta.is('responsavel_id',null):consulta.eq('responsavel_id',filtro)
       if(central.pronto && aba==='Carteira'){
+        // Order in the database, before pagination: unseen assignments always lead.
+        // Unassigned cases also have visto_em=null, so atribuido_em must put nulls last.
+        consulta=consulta.order('visto_em',{ascending:true,nullsFirst:true})
+          .order('atribuido_em',{ascending:false,nullsFirst:false})
         if(soNovos)consulta=consulta.eq('aberto',true).eq('responsavel_id',usuario).not('atribuido_em','is',null).is('visto_em',null)
         if(recorteLote){
           const rel=recorteLote.tipo==='lote'?'lote_itens':'novidade_itens'
@@ -207,6 +210,7 @@ function CRM({usuario,conta}) {
           consulta=consulta.select(selecao+','+rel+'!inner('+coluna+')',{count:'exact'}).eq(rel+'.'+coluna,recorteLote.id)
         }
       }
+      if(etapa!=='retornos')consulta=consulta.order('semana_entrada',{ascending:false}).order('id')
       const {data,count,error}=await consulta.range(pagina*limite,pagina*limite+limite-1)
       if (error) throw error
       return {etapa,pagina,limite,total:count,casos:data}
@@ -284,7 +288,7 @@ function CRM({usuario,conta}) {
       if (!origem.data) throw Error('O caso não está mais disponível para sua conta.')
       if(central.pronto && caso.responsavel_id===usuario && !caso.visto_em){
         const {error}=await db.rpc('marcar_caso_visto',{p_id:caso.id})
-        if(!error){setColunas(cols=>cols.map(c=>({...c,casos:c.casos.map(x=>x.id===caso.id?{...x,visto_em:new Date().toISOString()}:x)})));central.atualizar()}
+        if(!error){reler(v=>v+1);central.atualizar()}
       }
       setDetalhe(atual=>atual?.caso.id===caso.id
         ? {caso:{...caso,dados_origem:origem.data.dados_origem},evolucao:e,contatos:c}
