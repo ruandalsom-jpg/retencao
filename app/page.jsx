@@ -503,6 +503,7 @@ function Paginacao({coluna,mudar}) {
 
 function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
   const [acao,setAcao]=useState('manter')
+  const [copiaNumero,setCopiaNumero]=useState('')
   const ultima=evolucao[0]
   const ind=ultima?.indicadores
   const origem=caso.dados_origem || {}
@@ -511,6 +512,14 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
   const recente=normalize(ind?.motivo || caso.motivo)
   const pergunta=recente.includes('inativ')?'O que impediu você de operar e quando conseguiria voltar?':
     recente.includes('queda')?'O que mudou na sua disponibilidade ou na região onde você opera?':'O que ajudaria você a retomar ou manter a operação?'
+  async function copiarNumero(){
+    try{
+      await navigator.clipboard.writeText('+'+telefone)
+      setCopiaNumero('Número copiado.')
+    }catch{
+      setCopiaNumero('Copie manualmente: +'+telefone)
+    }
+  }
   return <section className="panel">
     <div className="caso-diagnostico"><small>{caso.id} · Entrada {caso.semana_entrada}</small>
     <h2>{ind?.motivo || caso.motivo}</h2><Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>
@@ -519,9 +528,12 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
     <dl className="dados-driver">
       {[['UUID',caso.entregador_id],['Praça',caso.praca],['Subpraça',origem['Subpraça Principal']],['Próximo contato',dataBR(caso.proximo_contato)]].map(([rotulo,valor])=><div key={rotulo}><dt>{rotulo}</dt><dd>{valor || '—'}</dd></div>)}
     </dl>
-    {caso.aberto && <article><h3>Antes da chamada</h3><p>{pergunta}</p>
+    {caso.aberto && <article><h3>Pergunta sugerida para o atendimento</h3><p>{pergunta}</p>
       {contatos[0] && <p>Último contato · {contatos[0].resultado}</p>}
-      {telefone && <a className="whatsapp" href={'https://wa.me/'+telefone} target="_blank" rel="noreferrer">Abrir WhatsApp</a>}
+      {telefone && <><div className="toolbar">
+        <a className="whatsapp" href={'https://wa.me/'+telefone} target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+        <button type="button" onClick={copiarNumero}>Copiar número</button>
+      </div><small className="block" role="status">{copiaNumero}</small></>}
     </article>}
     {ultima && <><h3>Última semana registrada · {ultima.semana}</h3>
       <p>{ind?.motivo || caso.motivo} · {ultima.prioridade}</p>
