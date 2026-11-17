@@ -35,7 +35,11 @@ export default function Home() {
         const {data,error}=await db.auth.signUp({
           email,password,options:{data:{nome},emailRedirectTo:window.location.origin},
         })
-        if (error) setErro(error.message)
+        if (error?.code === 'over_email_send_rate_limit' || /email rate limit exceeded/i.test(error?.message || '')) {
+          setErro('O envio do e-mail de confirmação atingiu o limite. Aguarde antes de tentar novamente ou peça ajuda ao supervisor.')
+        } else if (error?.code === 'email_address_not_authorized') {
+          setErro('O serviço de e-mail ainda não pode enviar a confirmação para este endereço. Fale com o supervisor.')
+        } else if (error) setErro(error.message)
         else if (!data.session) {
           setCadastro(false)
           setMensagem('Confira seu e-mail para confirmar o cadastro. Depois, aguarde a aprovação do supervisor.')
