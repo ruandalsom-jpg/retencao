@@ -184,6 +184,12 @@ export function HistoricoLotes({db,tick,abrirRecorte}) {
   const [removendo,setRemovendo]=useState(false)
   const [aviso,setAviso]=useState('')
   const [remocaoAtiva,setRemocaoAtiva]=useState(false)
+  const [loteSelecionado,setLoteSelecionado]=useState(null)
+  const dialogo=useRef(null)
+  useEffect(()=>{
+    if(loteSelecionado&&!dialogo.current.open)dialogo.current.showModal()
+    if(!loteSelecionado&&dialogo.current.open)dialogo.current.close()
+  },[loteSelecionado])
   useEffect(()=>{
     let ativo=true
     setCarregando(true)
@@ -209,7 +215,7 @@ export function HistoricoLotes({db,tick,abrirRecorte}) {
   },[db,tick,pagina,versao])
 
   async function remover(lote){
-    if(!confirm('Remover “'+lote.titulo+'” do histórico? Os casos continuam atribuídos.'))return
+    setLoteSelecionado(null)
     setRemovendo(true)
     setErro('')
     setAviso('')
@@ -224,8 +230,18 @@ export function HistoricoLotes({db,tick,abrirRecorte}) {
   }
   return <section className="panel"><h2>Histórico de distribuição</h2>{erro&&<p className="erro" role="alert">{erro}</p>}{aviso&&<p className="aviso" role="status">{aviso}</p>}
     {!carregando&&!remocaoAtiva&&!erro&&<p>Ative a remoção do histórico no Supabase para liberar a opção.</p>}
-    <div className="table"><table><thead><tr>{['Lote','Destinatário','Casos','Semanas','Distribuído por','Data','Ação'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{dados.map(l=><tr key={l.id}><td>{l.titulo}</td><td>{l.destino?.nome||'—'}</td><td>{l.quantidade}</td><td>{[...new Set(l.lote_itens.map(i=>i.ultima_semana))].sort().join(', ')}</td><td>{l.autor?.nome||'—'}</td><td>{dataHora(l.criado_em)}</td><td><button onClick={()=>abrirRecorte({tipo:'lote',id:l.id,titulo:l.titulo})}>Abrir lote</button> {remocaoAtiva&&<button disabled={removendo||carregando} onClick={()=>remover(l)}>Remover do histórico</button>}</td></tr>)}</tbody></table></div>
+    <div className="table"><table><thead><tr>{['Lote','Destinatário','Casos','Semanas','Distribuído por','Data','Ação'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{dados.map(l=><tr key={l.id}><td>{l.titulo}</td><td>{l.destino?.nome||'—'}</td><td>{l.quantidade}</td><td>{[...new Set(l.lote_itens.map(i=>i.ultima_semana))].sort().join(', ')}</td><td>{l.autor?.nome||'—'}</td><td>{dataHora(l.criado_em)}</td><td><button onClick={()=>abrirRecorte({tipo:'lote',id:l.id,titulo:l.titulo})}>Abrir lote</button> {remocaoAtiva&&<button disabled={removendo||carregando} onClick={()=>setLoteSelecionado(l)}>Remover do histórico</button>}</td></tr>)}</tbody></table></div>
     {!carregando&&!dados.length&&<p>Nenhum lote no histórico.</p>}<Paginas pagina={pagina} total={total} ocupado={carregando||removendo} mudar={setPagina}/>
+    <dialog ref={dialogo} className="confirmacao-lote" aria-labelledby="confirmar-remocao-lote"
+      aria-describedby="descricao-remocao-lote" onCancel={e=>{e.preventDefault();setLoteSelecionado(null)}}>
+      <h2 id="confirmar-remocao-lote">Remover lote do histórico?</h2>
+      <p id="descricao-remocao-lote">O lote <b>{loteSelecionado?.titulo}</b> sairá da lista. Os casos continuam atribuídos aos responsáveis.</p>
+      <div className="toolbar">
+        <button autoFocus onClick={()=>setLoteSelecionado(null)}>Cancelar</button>
+        <button className="confirmar-remocao" disabled={!loteSelecionado||removendo}
+          onClick={()=>remover(loteSelecionado)}>Remover do histórico</button>
+      </div>
+    </dialog>
   </section>
 }
 
