@@ -5,7 +5,7 @@ import { Camera, LogOut, Palette } from 'lucide-react'
 import { AlternarTema } from './tema'
 
 export function fotoValida(valor) {
-  return typeof valor==='string' && valor.length<=120000 && /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+$/.test(valor)?valor:''
+  return typeof valor==='string' && valor.length<=3000 && /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+$/.test(valor)?valor:''
 }
 export function Avatar({foto,nome,grande=false}) {
   return <span className={'avatar-perfil'+(grande?' grande':'')}>
@@ -21,14 +21,20 @@ async function prepararFoto(arquivo) {
     const img=new Image()
     await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('Não foi possível ler esta imagem.'));img.src=url})
     if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth*img.naturalHeight>40000000)throw Error('Escolha uma imagem de até 40 megapixels.')
-    const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256
+    const canvas=document.createElement('canvas')
     const ctx=canvas.getContext('2d');if(!ctx)throw Error('Não foi possível preparar a foto neste navegador.')
-    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,256,256)
     const lado=Math.min(img.naturalWidth,img.naturalHeight)
-    ctx.drawImage(img,(img.naturalWidth-lado)/2,(img.naturalHeight-lado)/2,lado,lado,0,0,256,256)
-    const foto=canvas.toDataURL('image/jpeg',.82)
-    if(!fotoValida(foto))throw Error('Escolha uma imagem mais simples para a foto.')
-    return foto
+    // Auth metadata is included in the session token; keep the thumbnail under 3 KB.
+    for(const tamanho of [128,96,64]){
+      canvas.width=tamanho;canvas.height=tamanho
+      ctx.fillStyle='#ffffff';ctx.fillRect(0,0,tamanho,tamanho)
+      ctx.drawImage(img,(img.naturalWidth-lado)/2,(img.naturalHeight-lado)/2,lado,lado,0,0,tamanho,tamanho)
+      for(const qualidade of [.72,.5,.35]){
+        const foto=canvas.toDataURL('image/jpeg',qualidade)
+        if(fotoValida(foto))return foto
+      }
+    }
+    throw Error('Escolha uma imagem mais simples para a foto.')
   }finally{URL.revokeObjectURL(url)}
 }
 
