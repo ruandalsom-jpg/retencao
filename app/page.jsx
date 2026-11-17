@@ -21,6 +21,12 @@ function Badge({valor}) {
   const chave=normalize(valor).replace(/[^a-z0-9]+/g,'-')
   return <span className={'badge badge-'+chave}>{{media:'Média',reativacao:'Reativação'}[chave] || valor || '—'}</span>
 }
+function CelulaClassificacao({valor}) {
+  const chave=normalize(valor).replace(/[^a-z0-9]+/g,'-')
+  return <td className={'celula-classificacao classificacao-'+chave}>
+    <span>{{media:'Média',reativacao:'Reativação'}[chave]||valor||'—'}</span>
+  </td>
+}
 function dataBR(valor) {
   return valor ? valor.split('-').reverse().join('/') : '—'
 }
@@ -367,8 +373,8 @@ function CRM({usuario}) {
             const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
             return <tr key={item.id} className="caso-linha" onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
               <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
-              <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
-              <td>{item.ultima_semana||atual?.semana || '—'}</td><td><Badge valor={item.prioridade_atual||atual?.prioridade}/></td><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
+              <CelulaClassificacao valor={item.prioridade}/><CelulaClassificacao valor={etapas[item.etapa]}/><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
+              <td>{item.ultima_semana||atual?.semana || '—'}</td><CelulaClassificacao valor={item.prioridade_atual||atual?.prioridade}/><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
             </tr>
           })}</tbody></table><Paginacao coluna={c} mudar={p=>setPaginas({lista:p})}/></div>)}
         </section> :
@@ -433,6 +439,7 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
           e.dataTransfer.setData('text/plain',item.id)
           setArrastado({id:item.id,etapa:item.etapa})
         }} onDragEnd={limpar}>
+        <button className="kanban-abrir kanban-caso-id" disabled={ocupado} onClick={()=>abrir(item)} aria-label={'Abrir caso '+item.id}>{item.id}</button>
         <div className="kanban-meta"><small>Entrada {item.semana_entrada}</small><Badge valor={item.prioridade_atual||item.prioridade}/></div>
         {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}
         <small className="block">Atualização {item.ultima_semana||item.semana_entrada}</small>
