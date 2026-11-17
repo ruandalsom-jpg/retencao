@@ -63,6 +63,8 @@ export function CentralPendente({central}) {
 function Prioridade({valor}) {return <span className={'badge badge-'+({'Alta':'alta','Media':'media','Média':'media','Reativacao':'reativacao','Reativação':'reativacao','Monitoramento':'monitoramento'}[valor]||'')}>{valor==='Media'?'Média':valor||'—'}</span>}
 function Paginas({pagina,total,limite=20,mudar,ocupado}) {return <div className="toolbar paginacao-central"><small>{n(total)} registros · página {pagina+1} de {Math.max(1,Math.ceil(total/limite))}</small><button disabled={ocupado||pagina===0} onClick={()=>mudar(pagina-1)}>Anterior</button><button disabled={ocupado||(pagina+1)*limite>=total} onClick={()=>mudar(pagina+1)}>Próxima</button></div>}
 
+const limiteFilaDistribuicao=5
+
 export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
   const [filtros,setFiltros]=useState({prioridade:'',tipo:'prioridade_atual',semana:'',praca:'',responsavel:responsavelInicial||'livre'})
   const [pagina,setPagina]=useState(0),[total,setTotal]=useState(0),[casos,setCasos]=useState([])
@@ -86,10 +88,10 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
   },[db,versao])
   useEffect(()=>{
     let ativo=true;setCarregando(true);setErro('')
-    consulta().range(pagina*20,pagina*20+19).then(({data,count,error})=>{
+    consulta().range(pagina*limiteFilaDistribuicao,(pagina+1)*limiteFilaDistribuicao-1).then(({data,count,error})=>{
       if(!ativo)return
       if(error){setErro(error.message);setCasos([])}
-      else {setCasos(data);setTotal(count);if(pagina>0&&pagina*20>=count)setPagina(Math.max(0,Math.ceil(count/20)-1))}
+      else {setCasos(data);setTotal(count);if(pagina>0&&pagina*limiteFilaDistribuicao>=count)setPagina(Math.max(0,Math.ceil(count/limiteFilaDistribuicao)-1))}
     }).catch(()=>{if(ativo)setErro('Falha ao consultar a fila.')}).finally(()=>{if(ativo)setCarregando(false)})
     return()=>{ativo=false}
   },[consulta,pagina,versao])
@@ -117,7 +119,7 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
     }catch(e){setErro(e.message);setRevisao(null);setSelecionados([]);setVersao(v=>v+1)}finally{trava.current=false;setSalvando(false)}
   }
   return <section className="distribuicao-central">
-    <div className="cards"><article><small>Disponíveis no recorte</small><strong>{carregando?'…':n(total)}</strong></article><article><small>Selecionados neste lote</small><strong>{selecionados.length}<small>de até 50</small></strong></article><article><small>Carteira do destinatário</small><strong>{colaborador?n(colaborador.ativos):'—'}</strong><small>{colaborador?n(colaborador.retornos)+' retornos até hoje':'Escolha um colaborador'}</small></article></div>
+    <div className="cards"><article><small>Casos no recorte</small><strong>{carregando?'…':n(total)}</strong></article><article><small>Selecionados neste lote</small><strong>{selecionados.length}<small>de até 50</small></strong></article><article><small>Carteira do destinatário</small><strong>{colaborador?n(colaborador.ativos):'—'}{colaborador&&<small>ativos · {n(colaborador.retornos)} retornos até hoje</small>}</strong></article></div>
     {erro && <p className="erro" role="alert">{erro}</p>}{aviso&&<p className="aviso" role="status">{aviso}</p>}
     <fieldset disabled={salvando||!!revisao} className="central-fieldset">
       <div className="panel toolbar filtros-central">
@@ -127,15 +129,7 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
         <label>Praça<input placeholder="Todas" value={filtros.praca} onChange={e=>filtrar('praca',e.target.value)}/></label>
         <label>Responsável atual<select value={filtros.responsavel} onChange={e=>filtrar('responsavel',e.target.value)}><option value="livre">Sem responsável</option><option value="">Todos · inclui transferências</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>
       </div>
-      <section className="panel"><div className="toolbar"><button disabled={carregando} onClick={primeiros}>Selecionar até 50 do recorte</button><button onClick={()=>setSelecionados([])}>Limpar seleção</button><small>A seleção é mantida ao trocar de página.</small></div>
-        <div className="table"><table><thead><tr>{['Seleção','Caso / motivo','Entrada','Última semana','Prioridade atual','Praça','Responsável'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{casos.map(c=><tr key={c.id}>
-          <td><input type="checkbox" aria-label={'Selecionar '+c.id} disabled={carregando||(!selecionados.some(x=>x.id===c.id)&&selecionados.length>=50)} checked={selecionados.some(x=>x.id===c.id)} onChange={()=>selecionar(c)}/></td>
-          <td><button className="caso-link" onClick={()=>abrir(c)}>{c.id.slice(0,16)}</button><small className="block">{c.motivo}</small></td><td>{c.semana_entrada}</td><td>{c.ultima_semana||c.semana_entrada}</td><td><Prioridade valor={c.prioridade_atual||c.prioridade}/></td><td>{c.praca}</td><td>{equipe.find(e=>e.id===c.responsavel_id)?.nome||(c.responsavel_id?'Atribuído':'Sem responsável')}</td>
-        </tr>)}</tbody></table></div>
-        {carregando?<p role="status">Atualizando fila…</p>:!casos.length&&<p>Nenhum caso no recorte.</p>}
-        <Paginas pagina={pagina} total={total} ocupado={carregando} mudar={setPagina}/>
-      </section>
-      <section className="panel lote-compositor"><h2>Preparar lote</h2><div className="toolbar">
+      <section className="panel lote-compositor"><h2>Preparar lote</h2><div className="toolbar"><button disabled={carregando} onClick={primeiros}>Selecionar até 50 do recorte</button><button disabled={!selecionados.length} onClick={()=>{setSelecionados([]);setAviso('')}}>Limpar seleção</button><small>A seleção é mantida ao trocar de página.</small></div><div className="toolbar campos-lote">
         <label>Título do lote<input value={titulo} maxLength={120} placeholder="Ex.: W46 · Alta · São Paulo" onChange={e=>setTitulo(e.target.value)}/></label>
         <label>Enviar para<select value={destino} onChange={e=>setDestino(e.target.value)}><option value="">Escolha um colaborador</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome} · {n(c.ativos)} ativos</option>)}</select></label>
         <button className="primary" disabled={!selecionados.length||!colaborador||jaDoDestino>0||carregando} onClick={()=>setRevisao({casos:[...selecionados],destino,nome:colaborador.nome,titulo:titulo.trim()||'Lote '+[...new Set(selecionados.map(c=>c.ultima_semana||c.semana_entrada))].sort().join(' / ')})}>Revisar lote</button>
@@ -150,6 +144,16 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
       <p>O colaborador receberá um aviso com acesso direto ao lote. A etapa e o histórico dos casos serão preservados.</p></>}
       <div className="toolbar"><button disabled={salvando} onClick={()=>setRevisao(null)}>Voltar à seleção</button><button className="primary" disabled={salvando} onClick={enviar}>{salvando?'Salvando…':revisao.remover?'Confirmar remoção':'Confirmar envio'}</button></div>
     </section>}
+    <fieldset disabled={salvando||!!revisao} className="central-fieldset">
+      <section className="panel fila-distribuicao" aria-label="Fila de casos">
+        <div className="table"><table><thead><tr>{['Seleção','Caso / motivo','Entrada','Última semana','Prioridade atual','Praça','Responsável'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{casos.map(c=><tr key={c.id}>
+          <td><input type="checkbox" aria-label={'Selecionar '+c.id} disabled={carregando||(!selecionados.some(x=>x.id===c.id)&&selecionados.length>=50)} checked={selecionados.some(x=>x.id===c.id)} onChange={()=>selecionar(c)}/></td>
+          <td><button className="caso-link" onClick={()=>abrir(c)}>{c.id.slice(0,16)}</button><small className="block">{c.motivo}</small></td><td>{c.semana_entrada}</td><td>{c.ultima_semana||c.semana_entrada}</td><td><Prioridade valor={c.prioridade_atual||c.prioridade}/></td><td>{c.praca}</td><td>{equipe.find(e=>e.id===c.responsavel_id)?.nome||(c.responsavel_id?'Atribuído':'Sem responsável')}</td>
+        </tr>)}</tbody></table></div>
+        {carregando?<p role="status">Atualizando fila…</p>:!casos.length&&<p>Nenhum caso no recorte.</p>}
+        <Paginas pagina={pagina} total={total} limite={limiteFilaDistribuicao} ocupado={carregando} mudar={setPagina}/>
+      </section>
+    </fieldset>
   </section>
 }
 
