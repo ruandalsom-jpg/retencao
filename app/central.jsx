@@ -180,16 +180,52 @@ export function Novidades({db,tick,atualizar,abrirRecorte}) {
 
 export function HistoricoLotes({db,tick,abrirRecorte}) {
   const [dados,setDados]=useState([]),[erro,setErro]=useState(''),[pagina,setPagina]=useState(0),[total,setTotal]=useState(0),[carregando,setCarregando]=useState(true)
+  const [versao,setVersao]=useState(0)
+  const [removendo,setRemovendo]=useState(false)
+  const [aviso,setAviso]=useState('')
+  const [remocaoAtiva,setRemocaoAtiva]=useState(false)
   useEffect(()=>{
-    let ativo=true;setCarregando(true)
-    db.from('lotes_distribuicao').select('*,autor:colaboradores!supervisor_id(nome),destino:colaboradores!responsavel_id(nome),lote_itens(ultima_semana)',{count:'exact'}).order('criado_em',{ascending:false}).order('id').range(pagina*20,pagina*20+19)
-      .then(({data,count,error})=>{if(!ativo)return;if(error)setErro(error.message);else{setDados(data);setTotal(count);setErro('')}})
-      .catch(()=>{if(ativo)setErro('Não foi possível consultar os lotes.')}).finally(()=>{if(ativo)setCarregando(false)})
+    let ativo=true
+    setCarregando(true)
+    const consultar=filtrar=>{
+      let busca=db.from('lotes_distribuicao').select('*,autor:colaboradores!supervisor_id(nome),destino:colaboradores!responsavel_id(nome),lote_itens(ultima_semana)',{count:'exact'})
+      if(filtrar)busca=busca.is('removido_do_historico_em',null)
+      return busca.order('criado_em',{ascending:false}).order('id').range(pagina*20,pagina*20+19)
+    }
+    async function carregar(){
+      let resultado=await consultar(true)
+      const faltaMigracao=resultado.error?.code==='42703'
+      if(faltaMigracao)resultado=await consultar(false)
+      if(!ativo)return
+      if(resultado.error)throw resultado.error
+      setRemocaoAtiva(!faltaMigracao)
+      setDados(resultado.data)
+      setTotal(resultado.count)
+      if(pagina>0&&pagina*20>=resultado.count)setPagina(Math.max(0,Math.ceil(resultado.count/20)-1))
+    }
+    carregar().catch(e=>{if(ativo)setErro(e.message||'Não foi possível consultar os lotes.')})
+      .finally(()=>{if(ativo)setCarregando(false)})
     return()=>{ativo=false}
-  },[db,tick,pagina])
-  return <section className="panel"><h2>Histórico de distribuição</h2>{erro&&<p className="erro" role="alert">{erro}</p>}
-    <div className="table"><table><thead><tr>{['Lote','Destinatário','Casos','Semanas','Distribuído por','Data','Ação'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{dados.map(l=><tr key={l.id}><td>{l.titulo}</td><td>{l.destino?.nome||'—'}</td><td>{l.quantidade}</td><td>{[...new Set(l.lote_itens.map(i=>i.ultima_semana))].sort().join(', ')}</td><td>{l.autor?.nome||'—'}</td><td>{dataHora(l.criado_em)}</td><td><button onClick={()=>abrirRecorte({tipo:'lote',id:l.id,titulo:l.titulo})}>Abrir lote</button></td></tr>)}</tbody></table></div>
-    {!carregando&&!dados.length&&<p>Nenhum lote registrado na nova central.</p>}<Paginas pagina={pagina} total={total} ocupado={carregando} mudar={setPagina}/>
+  },[db,tick,pagina,versao])
+
+  async function remover(lote){
+    if(!confirm('Remover “'+lote.titulo+'” do histórico? Os casos continuam atribuídos.'))return
+    setRemovendo(true)
+    setErro('')
+    setAviso('')
+    try{
+      const {error}=await db.rpc('remover_lote_do_historico',{p_id:lote.id})
+      if(error)throw error
+      setDados(lista=>lista.filter(item=>item.id!==lote.id))
+      setAviso('Lote removido do histórico.')
+      setVersao(v=>v+1)
+    }catch(e){setErro(e.message||'Não foi possível remover o lote.')}
+    finally{setRemovendo(false)}
+  }
+  return <section className="panel"><h2>Histórico de distribuição</h2>{erro&&<p className="erro" role="alert">{erro}</p>}{aviso&&<p className="aviso" role="status">{aviso}</p>}
+    {!carregando&&!remocaoAtiva&&!erro&&<p>Ative a remoção do histórico no Supabase para liberar a opção.</p>}
+    <div className="table"><table><thead><tr>{['Lote','Destinatário','Casos','Semanas','Distribuído por','Data','Ação'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{dados.map(l=><tr key={l.id}><td>{l.titulo}</td><td>{l.destino?.nome||'—'}</td><td>{l.quantidade}</td><td>{[...new Set(l.lote_itens.map(i=>i.ultima_semana))].sort().join(', ')}</td><td>{l.autor?.nome||'—'}</td><td>{dataHora(l.criado_em)}</td><td><button onClick={()=>abrirRecorte({tipo:'lote',id:l.id,titulo:l.titulo})}>Abrir lote</button> {remocaoAtiva&&<button disabled={removendo||carregando} onClick={()=>remover(l)}>Remover do histórico</button>}</td></tr>)}</tbody></table></div>
+    {!carregando&&!dados.length&&<p>Nenhum lote no histórico.</p>}<Paginas pagina={pagina} total={total} ocupado={carregando||removendo} mudar={setPagina}/>
   </section>
 }
 
