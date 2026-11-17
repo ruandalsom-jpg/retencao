@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlternarTema } from './tema'
+import { Avatar } from './perfil'
 import { Columns3, CalendarClock, Bell, UsersRound, Archive, LayoutDashboard, ShieldCheck, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 const campos='id,entregador_id,motivo,prioridade,prioridade_atual,semana_entrada,ultima_semana,praca,responsavel_id,aberto,etapa,proximo_contato,atribuido_em,visto_em'
@@ -37,10 +37,10 @@ export function useCentral(db,perfil,versao) {
   return {...estado,atualizar:()=>atualizar(v=>v+1)}
 }
 
-export function MenuLateral({perfil,aba,navegar,resumo,sair}) {
+export function MenuLateral({perfil,aba,navegar,resumo,foto}) {
   const [recolhido,setRecolhido]=useState(false)
   return <aside className={'menu-lateral'+(recolhido?' recolhido':'')}>
-    <div className="menu-marca"><span className="marca-icone" aria-hidden="true">RF</span><div className="menu-texto"><b>Retenção de Frota</b><small>Operação e relacionamento</small></div></div>
+    <div className="menu-marca"><span className="logo-sistema"><img src="/logo.png" alt="Logo CR"/></span><div className="menu-texto"><b>Retenção de Frota</b><small>Operação e relacionamento</small></div></div>
     <button className="recolher-menu" onClick={()=>setRecolhido(!recolhido)} aria-label={recolhido?'Expandir menu':'Recolher menu'} aria-expanded={!recolhido}>{recolhido?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button>
     <nav aria-label="Navegação principal">
       <small className="menu-grupo menu-texto">ACOMPANHAMENTO</small>
@@ -50,7 +50,7 @@ export function MenuLateral({perfil,aba,navegar,resumo,sair}) {
           <button aria-label={nome+(numero?' · '+numero:'')} title={recolhido?nome:undefined} aria-current={aba===id?'page':undefined} onClick={()=>navegar(id)}><Icone size={18} aria-hidden="true"/><span className="menu-texto">{nome}</span>{numero>0 && <span className="menu-contador">{n(numero)}</span>}</button>
         </div>)}
     </nav>
-    <div className="menu-rodape"><div className="menu-texto"><b>{perfil.nome}</b><small>{perfil.papel==='supervisor'?'Supervisor':'Colaborador'}</small></div><AlternarTema/><button onClick={sair}>Sair</button></div>
+    <div className="menu-rodape"><button className="abrir-perfil" onClick={()=>navegar('Perfil')} aria-label="Abrir meu perfil" aria-current={aba==='Perfil'?'page':undefined}><Avatar foto={foto} nome={perfil.nome}/><span className="menu-texto"><b>{perfil.nome}</b><small>Meu perfil</small></span></button></div>
   </aside>
 }
 

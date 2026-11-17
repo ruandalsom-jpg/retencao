@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
-import { AlternarTema } from './tema'
+import { Avatar, PerfilUsuario } from './perfil'
 import { indicador } from './indicadores.mjs'
 import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes } from './central'
 
@@ -20,12 +20,6 @@ const etapasAbertas = Object.keys(etapas).slice(0, 3)
 function Badge({valor}) {
   const chave=normalize(valor).replace(/[^a-z0-9]+/g,'-')
   return <span className={'badge badge-'+chave}>{{media:'Média',reativacao:'Reativação'}[chave] || valor || '—'}</span>
-}
-function CelulaClassificacao({valor}) {
-  const chave=normalize(valor).replace(/[^a-z0-9]+/g,'-')
-  return <td className={'celula-classificacao classificacao-'+chave}>
-    <span>{{media:'Média',reativacao:'Reativação'}[chave]||valor||'—'}</span>
-  </td>
 }
 function dataBR(valor) {
   return valor ? valor.split('-').reverse().join('/') : '—'
@@ -82,9 +76,9 @@ export default function Home() {
     } catch { setErro('Conexão indisponível. Tente novamente.') }
     finally { setOcupado(false) }
   }
-  if (sessao) return <CRM key={sessao.user.id} usuario={sessao.user.id}/>
+  if (sessao) return <CRM key={sessao.user.id} usuario={sessao.user.id} conta={sessao.user}/>
   return <main className="login-shell"><section className="panel login">
-    <header><span className="brand">Operações</span><AlternarTema/></header>
+    <header><span className="logo-sistema"><img src="/logo.png" alt="Logo CR"/></span><span className="brand">Operações</span></header>
     <h1>Retenção de Frota</h1><p className="login-descricao">Sua carteira, seus contatos e a evolução de cada entregador em um só lugar.</p>
     <h2>{cadastro?'Crie sua conta':'Acesse sua carteira'}</h2>
     {!db ? <p className="aviso">Conexão com o Supabase pendente neste ambiente.</p> :
@@ -102,7 +96,7 @@ export default function Home() {
   </section></main>
 }
 
-function CRM({usuario}) {
+function CRM({usuario,conta}) {
   const [perfil,setPerfil]=useState(null)
   const [pendente,setPendente]=useState(false)
   const [revisao,reverPerfil]=useState(0)
@@ -135,7 +129,7 @@ function CRM({usuario}) {
   const [recorteLote,setRecorteLote]=useState(null)
   const [soNovos,setSoNovos]=useState(false)
   const campos=selecaoCampos+(central.pronto?',ultima_semana,prioridade_atual,atribuido_em,visto_em':'')
-  const centralAberta=['Distribuição','Novidades','Lotes'].includes(aba)
+  const centralAberta=['Distribuição','Novidades','Lotes','Perfil'].includes(aba)
   useEffect(()=>{
     if (!aviso) return
     const timer=setTimeout(()=>setAviso(''),4000)
@@ -164,7 +158,7 @@ function CRM({usuario}) {
   },[perfil,supervisor])
   useEffect(()=>{
     if (!perfil) return
-    if(['Distribuição','Novidades','Lotes'].includes(aba)){setCarregando(false);return}
+    if(['Distribuição','Novidades','Lotes','Perfil'].includes(aba)){setCarregando(false);return}
     let ativo=true
     setCarregando(true)
     if (aba==='Acessos') {
@@ -303,14 +297,15 @@ function CRM({usuario}) {
   }
 
   return <div className={perfil?'crm-shell':'crm-inicial'}>
-    {perfil&&<MenuLateral perfil={perfil} aba={aba} navegar={navegar} resumo={central.resumo} sair={()=>db.auth.signOut()}/>}
+    {perfil&&<MenuLateral perfil={perfil} aba={aba} navegar={navegar} resumo={central.resumo} foto={conta?.user_metadata?.foto_perfil}/>}
     <main className="crm-conteudo">
-    <header><div><span className="brand">Retenção de Frota</span><h1>{aba==='Distribuição'?'Distribuir casos':aba==='Lotes'?'Histórico de lotes':aba}</h1></div><div className="toolbar">{central.resumo?.semana&&<span className="pill">Base · {central.resumo.semana}</span>}<AlternarTema/><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
+    <header><div><span className="brand">Retenção de Frota</span><h1>{aba==='Distribuição'?'Distribuir casos':aba==='Lotes'?'Histórico de lotes':aba}</h1></div><div className="toolbar">{central.resumo?.semana&&<span className="pill">Base · {central.resumo.semana}</span>}<button className="abrir-perfil" onClick={()=>navegar('Perfil')} aria-label="Abrir meu perfil"><Avatar foto={conta?.user_metadata?.foto_perfil} nome={perfil?.nome||conta?.user_metadata?.nome}/><span>Meu perfil</span></button></div></header>
     {erro && <p className="erro" role="alert">{erro}</p>}{aviso && <p className="aviso" role="status">{aviso}</p>}
     {pendente && <section className="panel"><h2>Conta aguardando aprovação</h2>
       <p>Peça ao supervisor para aprovar seu cadastro em Acessos.</p>
       <button onClick={()=>{setErro('');reverPerfil(v=>v+1)}}>Verificar aprovação</button>
     </section>}
+    {aba==='Perfil'&&<PerfilUsuario db={db} usuario={conta} perfil={perfil}/>}
     {perfil && <>
       {aba!=='Acessos' && !centralAberta && <section className="panel toolbar" aria-label="Filtros">
         {(aba==='Carteira'||aba==='Distribuição') && <>
@@ -336,7 +331,7 @@ function CRM({usuario}) {
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
       {!centralAberta && carregando && exibidas.length>0 && <span className="atualizacao-discreta" role="status">Atualizando dados…</span>}
-      {centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
+      {aba==='Perfil'?null:centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
       carregando && exibidas.length===0 ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
@@ -373,8 +368,8 @@ function CRM({usuario}) {
             const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
             return <tr key={item.id} className="caso-linha" onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
               <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
-              <CelulaClassificacao valor={item.prioridade}/><CelulaClassificacao valor={etapas[item.etapa]}/><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
-              <td>{item.ultima_semana||atual?.semana || '—'}</td><CelulaClassificacao valor={item.prioridade_atual||atual?.prioridade}/><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
+              <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
+              <td>{item.ultima_semana||atual?.semana || '—'}</td><td><Badge valor={item.prioridade_atual||atual?.prioridade}/></td><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
             </tr>
           })}</tbody></table><Paginacao coluna={c} mudar={p=>setPaginas({lista:p})}/></div>)}
         </section> :
@@ -408,7 +403,7 @@ function PainelCaso({fechar,children}) {
     onClick={e=>{if(e.target===e.currentTarget)fechar()}}>
     <div className="painel-caso-conteudo">
       <header><h2 id="painel-caso-titulo">Atendimento do entregador</h2>
-        <div className="toolbar"><AlternarTema/><button onClick={fechar} aria-label="Fechar atendimento">Fechar</button></div>
+        <div className="toolbar"><button onClick={fechar} aria-label="Fechar atendimento">Fechar</button></div>
       </header>
       {children}
     </div>
