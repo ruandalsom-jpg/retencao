@@ -122,6 +122,11 @@ function CRM({usuario}) {
   const [detalhe,setDetalhe]=useState(null)
   const supervisor=perfil?.papel==='supervisor'
   useEffect(()=>{
+    if (!aviso) return
+    const timer=setTimeout(()=>setAviso(''),4000)
+    return ()=>clearTimeout(timer)
+  },[aviso])
+  useEffect(()=>{
     let ativo=true
     db.from('colaboradores').select('id,nome,papel').eq('id',usuario).maybeSingle().then(({data,error})=>{
       if (!ativo) return
@@ -194,7 +199,7 @@ function CRM({usuario}) {
       )}))
       else setColunas(dados.map(coluna=>({...coluna,aba,visao})))
     })
-      .catch(e=>{if(ativo){setColunas([]);setErro(e.message)}})
+      .catch(e=>{if(ativo)setErro(e.message)})
       .finally(()=>{if(ativo)setCarregando(false)})
     return ()=>{ativo=false}
   },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos,visao,busca,prioridade,etapaFiltro])
@@ -296,7 +301,8 @@ function CRM({usuario}) {
       {aba==='Carteira' && <div className="toolbar visualizacao" aria-label="Visualização da carteira">
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
-      {carregando ? <p role="status">Carregando carteira…</p> :
+      {carregando && exibidas.length>0 && <span className="atualizacao-discreta" role="status">Atualizando dados…</span>}
+      {carregando && exibidas.length===0 ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
           {pedidos.map(p=><article className="toolbar" key={p.id}><span><b>{p.nome}</b><small className="block">{p.email}</small></span>
@@ -351,7 +357,7 @@ function CRM({usuario}) {
             </tr>
           })}</tbody></table><Paginacao coluna={c} mudar={p=>setPaginas({lista:p})}/></div>)}
         </section> :
-        <Kanban colunas={exibidas} ocupado={ocupado} abrir={abrir}
+        <Kanban colunas={exibidas} ocupado={ocupado||carregando} abrir={abrir}
           nomeResponsavel={id=>equipe.find(p=>p.id===id)?.nome || (id===usuario?perfil.nome:id?'Atribuído':'Sem responsável')}
           mover={(id,etapa)=>salvar('mover_caso',{p_id:id,p_etapa:etapa},'Etapa atualizada.')}
           mudarPagina={(etapa,pagina)=>setPaginas(anterior=>({...anterior,[etapa]:pagina}))}/>}
