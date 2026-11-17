@@ -102,3 +102,30 @@ main>.aviso{position:fixed;right:20px;bottom:64px;z-index:5;max-width:calc(100vw
 :root[data-tema=escuro] button.primary{background:#198364;border-color:#198364;color:#fff}
 :root[data-tema=escuro] button.primary:hover:not(:disabled){background:#12674e;border-color:#46c99e}
 @media(max-width:700px){.painel-caso{width:100%}.painel-caso-conteudo{padding:12px}.login h1{font-size:32px}}
+
+/* CRM navigation and distribution workspace */
+.crm-shell{display:flex;min-height:100dvh;align-items:flex-start}
+.crm-conteudo{flex:1;min-width:0;max-width:1600px;width:100%;padding:28px;margin:0 auto}
+.crm-conteudo>header{margin-bottom:22px}.crm-conteudo h1{font-size:32px;margin:5px 0 0}
+.menu-lateral{position:sticky;top:0;flex:0 0 232px;min-height:100dvh;background:var(--superficie);border-right:1px solid var(--borda);padding:22px 14px;display:flex;flex-direction:column;gap:12px}
+.menu-marca{display:flex;align-items:center;gap:10px;margin-bottom:8px}.menu-marca b{font-size:15px;white-space:nowrap}.menu-marca small{display:block;font-size:11px;margin-top:3px}
+.marca-icone{display:grid;place-items:center;flex:0 0 34px;height:34px;background:var(--ativo);color:var(--destaque);border-radius:10px;font-size:13px;font-weight:700}
+.menu-lateral nav{margin:0}.menu-lateral nav button{width:100%;display:flex;align-items:center;gap:10px;text-align:left;font-size:14px;padding:11px;border-radius:8px}
+.menu-lateral nav button>svg{flex-shrink:0}
+.menu-lateral nav button[aria-current=page]{background:var(--ativo);color:var(--link-ativo);border-color:transparent;box-shadow:none}
+.menu-grupo{display:block;letter-spacing:.08em;font-size:10px;font-weight:700;margin:22px 10px 8px}
+.menu-contador{margin-left:auto;background:var(--contador);color:var(--texto);font-size:11px;border-radius:6px;padding:2px 6px}
+.menu-rodape{margin-top:auto;padding-top:24px;display:flex;gap:8px;flex-wrap:wrap}.menu-rodape>.menu-texto{flex-basis:100%;margin-bottom:8px}.menu-rodape small{display:block;margin-top:3px}.menu-rodape button{font-size:13px}
+.recolher-menu{align-self:flex-end;padding:3px 10px;font-size:16px}
+.menu-lateral.recolhido{flex-basis:76px;padding:22px 9px}.menu-lateral.recolhido .menu-texto{display:none}.menu-lateral.recolhido nav button{flex-wrap:wrap;justify-content:center;padding:10px 4px}.menu-lateral.recolhido .menu-contador{margin:0}.menu-lateral.recolhido .menu-rodape .alternar-tema{font-size:0;padding:7px}.menu-lateral.recolhido .menu-rodape .alternar-tema span{font-size:20px}
+.central-fieldset{padding:0;border:0;margin:0;min-width:0}.central-fieldset:disabled{opacity:.75}
+.filtros-central{align-items:end}.filtros-central input{max-width:180px}
+.lote-compositor{border-top:3px solid var(--destaque)}.lote-compositor input{min-width:240px}
+.revisao-lote{border:2px solid var(--destaque)}
+.paginacao-central{margin-top:16px}.paginacao-central small{margin-right:auto}
+.novidade h2{margin:14px 0 8px}.novidade.nao-lida{border-left:4px solid var(--destaque)}
+.filtro-novos{display:flex;align-items:center;gap:8px;margin:15px 0}.filtro-novos input{width:17px;height:17px}
+.distribuicao-central .cards strong small{display:inline;font-size:13px;font-weight:400;margin-left:7px}
+.distribuicao-central table td{white-space:normal}.distribuicao-central table td small{min-width:140px}
+.crm-conteudo .visualizacao{margin-bottom:12px}
+@media(max-width:850px){.crm-shell{display:block}.menu-lateral,.menu-lateral.recolhido{position:static;min-height:0;border-right:0;border-bottom:1px solid var(--borda);padding:14px}.menu-lateral .menu-texto,.menu-lateral.recolhido .menu-texto{display:block}.menu-lateral nav{display:flex;flex-wrap:wrap;gap:5px}.menu-lateral .menu-grupo,.menu-lateral .menu-rodape,.recolher-menu{display:none}.menu-lateral nav button{width:auto;font-size:12px;padding:8px}.menu-marca{margin:0}.crm-conteudo{padding:20px 14px}.menu-lateral.recolhido nav button{padding:8px;flex-wrap:nowrap}.lote-compositor input{min-width:0;width:100%}}

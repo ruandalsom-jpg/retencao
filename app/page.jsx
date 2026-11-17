@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
 import { AlternarTema } from './tema'
 import { indicador } from './indicadores.mjs'
+import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes } from './central'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -124,6 +125,11 @@ function CRM({usuario}) {
   const [dono,setDono]=useState('')
   const [detalhe,setDetalhe]=useState(null)
   const supervisor=perfil?.papel==='supervisor'
+  const central=useCentral(db,perfil,versao)
+  const [recorteLote,setRecorteLote]=useState(null)
+  const [soNovos,setSoNovos]=useState(false)
+  const campos=selecaoCampos+(central.pronto?',ultima_semana,prioridade_atual,atribuido_em,visto_em':'')
+  const centralAberta=['Distribuição','Novidades','Lotes'].includes(aba)
   useEffect(()=>{
     if (!aviso) return
     const timer=setTimeout(()=>setAviso(''),4000)
@@ -152,6 +158,7 @@ function CRM({usuario}) {
   },[perfil,supervisor])
   useEffect(()=>{
     if (!perfil) return
+    if(['Distribuição','Novidades','Lotes'].includes(aba)){setCarregando(false);return}
     let ativo=true
     setCarregando(true)
     if (aba==='Acessos') {
@@ -167,17 +174,17 @@ function CRM({usuario}) {
     Promise.all(chaves.map(async etapa=>{
       const pagina=paginas[etapa]||0
       const limite=aba==='Carteira' && visao==='kanban' ? limiteKanban : limiteLista
-      let consulta=db.from('casos').select(selecaoCampos,{count:'exact'}).order('semana_entrada',{ascending:false}).order('id')
+      let consulta=db.from('casos').select(campos,{count:'exact'}).order('semana_entrada',{ascending:false}).order('id')
       if (etapa==='lote') consulta=consulta.eq('aberto',true)
       else if (etapa==='retornos') {
-        consulta=db.from('casos').select(selecaoCampos,{count:'exact'}).eq('aberto',true)
+        consulta=db.from('casos').select(campos,{count:'exact'}).eq('aberto',true)
           .not('proximo_contato','is',null).order('proximo_contato').order('id')
         const dia=hoje()
         if (recorteRetornos==='vencidos') consulta=consulta.lt('proximo_contato',dia)
         if (recorteRetornos==='hoje') consulta=consulta.eq('proximo_contato',dia)
         if (recorteRetornos==='futuros') consulta=consulta.gt('proximo_contato',dia)
       } else if (etapa==='lista') {
-        consulta=db.from('casos').select(selecaoCampos+',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade)',{count:'exact'})
+        consulta=db.from('casos').select(campos+',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade)',{count:'exact'})
           .order('semana_entrada',{ascending:false}).order('id')
           .order('semana',{referencedTable:'evolucao_semanal',ascending:false})
           .limit(1,{referencedTable:'evolucao_semanal'})
@@ -191,6 +198,15 @@ function CRM({usuario}) {
       if (praca.trim()) consulta=consulta.ilike('praca','%'+praca.trim()+'%')
       if (semana) consulta=consulta.eq('semana_entrada',semana)
       if (supervisor && filtro) consulta=filtro==='livre'?consulta.is('responsavel_id',null):consulta.eq('responsavel_id',filtro)
+      if(central.pronto && aba==='Carteira'){
+        if(soNovos)consulta=consulta.eq('aberto',true).eq('responsavel_id',usuario).not('atribuido_em','is',null).is('visto_em',null)
+        if(recorteLote){
+          const rel=recorteLote.tipo==='lote'?'lote_itens':'novidade_itens'
+          const coluna=recorteLote.tipo==='lote'?'lote_id':'novidade_id'
+          const selecao=campos+(etapa==='lista'?',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade)':'')
+          consulta=consulta.select(selecao+','+rel+'!inner('+coluna+')',{count:'exact'}).eq(rel+'.'+coluna,recorteLote.id)
+        }
+      }
       const {data,count,error}=await consulta.range(pagina*limite,pagina*limite+limite-1)
       if (error) throw error
       return {etapa,pagina,limite,total:count,casos:data}
@@ -205,7 +221,7 @@ function CRM({usuario}) {
       .catch(e=>{if(ativo)setErro(e.message)})
       .finally(()=>{if(ativo)setCarregando(false)})
     return ()=>{ativo=false}
-  },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos,visao,busca,prioridade,etapaFiltro])
+  },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos,visao,busca,prioridade,etapaFiltro,central.pronto,recorteLote,soNovos,usuario])
 
   useEffect(()=>{
     if (!supervisor || aba!=='Dashboard') return
@@ -242,6 +258,8 @@ function CRM({usuario}) {
 
   const exibidas=colunas.filter(c=>c.aba===aba && c.visao===visao)
   function recorte() { setPaginas({});setIds([]);setErro('');setAviso('');setDetalhe(null) }
+  function navegar(novaAba){setAba(novaAba);setRecorteLote(null);setSoNovos(false);recorte()}
+  function abrirRecorte(selecao){setRecorteLote(selecao);setSoNovos(false);setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setVisao('lista');setAba('Carteira');recorte()}
   async function salvar(funcao, parametros, mensagem) {
     if (ocupado) return
     setOcupado(true);setErro('');setAviso('')
@@ -264,6 +282,10 @@ function CRM({usuario}) {
       ])
       if (origem.error) throw origem.error
       if (!origem.data) throw Error('O caso não está mais disponível para sua conta.')
+      if(central.pronto && caso.responsavel_id===usuario && !caso.visto_em){
+        const {error}=await db.rpc('marcar_caso_visto',{p_id:caso.id})
+        if(!error){setColunas(cols=>cols.map(c=>({...c,casos:c.casos.map(x=>x.id===caso.id?{...x,visto_em:new Date().toISOString()}:x)})));central.atualizar()}
+      }
       setDetalhe(atual=>atual?.caso.id===caso.id
         ? {caso:{...caso,dados_origem:origem.data.dados_origem},evolucao:e,contatos:c}
         : atual)
@@ -274,16 +296,17 @@ function CRM({usuario}) {
     } finally {setOcupado(false)}
   }
 
-  return <main>
-    <header><div><span className="brand">Operações</span><h1>Retenção de Frota</h1></div><div className="toolbar"><AlternarTema/><span>{perfil?.nome}</span><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
+  return <div className={perfil?'crm-shell':'crm-inicial'}>
+    {perfil&&<MenuLateral perfil={perfil} aba={aba} navegar={navegar} resumo={central.resumo} sair={()=>db.auth.signOut()}/>}
+    <main className="crm-conteudo">
+    <header><div><span className="brand">Retenção de Frota</span><h1>{aba==='Distribuição'?'Distribuir casos':aba==='Lotes'?'Histórico de lotes':aba}</h1></div><div className="toolbar">{central.resumo?.semana&&<span className="pill">Base · {central.resumo.semana}</span>}<AlternarTema/><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
     {erro && <p className="erro" role="alert">{erro}</p>}{aviso && <p className="aviso" role="status">{aviso}</p>}
     {pendente && <section className="panel"><h2>Conta aguardando aprovação</h2>
       <p>Peça ao supervisor para aprovar seu cadastro em Acessos.</p>
       <button onClick={()=>{setErro('');reverPerfil(v=>v+1)}}>Verificar aprovação</button>
     </section>}
     {perfil && <>
-      <nav className="toolbar">{['Carteira','Retornos',...(supervisor?['Distribuição','Dashboard','Acessos']:[])].map(t=><button key={t} aria-current={t===aba?'page':undefined} onClick={()=>{setAba(t);recorte()}}>{t}</button>)}</nav>
-      {aba!=='Acessos' && <section className="panel toolbar" aria-label="Filtros">
+      {aba!=='Acessos' && !centralAberta && <section className="panel toolbar" aria-label="Filtros">
         {(aba==='Carteira'||aba==='Distribuição') && <>
           <label>Buscar caso, UUID ou motivo<input value={busca} onChange={e=>{setBusca(e.target.value);recorte()}}/></label>
           <label>Prioridade de entrada<select value={prioridade} onChange={e=>{setPrioridade(e.target.value);recorte()}}>
@@ -301,11 +324,14 @@ function CRM({usuario}) {
         {supervisor && <label>Responsável<select value={filtro} onChange={e=>{setFiltro(e.target.value);recorte()}}><option value="">Todos</option><option value="livre">Sem responsável</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>}
         <button onClick={()=>{setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setRecorteRetornos('todos');recorte()}}>Limpar filtros</button>
       </section>}
+      {aba==='Carteira'&&recorteLote&&<div className="panel toolbar"><span>Recorte: <b>{recorteLote.titulo}</b></span><button onClick={()=>{setRecorteLote(null);recorte()}}>Ver toda a carteira</button><small>Exibe os casos que você ainda pode acessar.</small></div>}
+      {aba==='Carteira'&&central.pronto&&<label className="filtro-novos"><input type="checkbox" checked={soNovos} onChange={e=>{setSoNovos(e.target.checked);recorte()}}/> Novos para mim · ainda não abertos ({central.resumo?.novos||0})</label>}
       {aba==='Carteira' && <div className="toolbar visualizacao" aria-label="Visualização da carteira">
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
-      {carregando && exibidas.length>0 && <span className="atualizacao-discreta" role="status">Atualizando dados…</span>}
-      {carregando && exibidas.length===0 ? <p role="status">Carregando carteira…</p> :
+      {!centralAberta && carregando && exibidas.length>0 && <span className="atualizacao-discreta" role="status">Atualizando dados…</span>}
+      {centralAberta ? (!central.pronto?<CentralPendente central={central}/>:aba==='Distribuição'?<Distribuicao db={db} abrir={abrir} concluido={()=>reler(v=>v+1)}/>:aba==='Novidades'?<Novidades db={db} tick={central.tick} atualizar={central.atualizar} abrirRecorte={abrirRecorte}/>:<HistoricoLotes db={db} tick={central.tick} abrirRecorte={abrirRecorte}/>) :
+      carregando && exibidas.length===0 ? <p role="status">Carregando carteira…</p> :
         aba==='Acessos' ? <section className="panel"><h2>Cadastros aguardando aprovação</h2>
           {pedidos.length===0 && <p>Nenhum cadastro com e-mail confirmado aguardando aprovação.</p>}
           {pedidos.map(p=><article className="toolbar" key={p.id}><span><b>{p.nome}</b><small className="block">{p.email}</small></span>
@@ -333,30 +359,16 @@ function CRM({usuario}) {
             <tbody>{linha.map(([s,g])=><tr key={s}><th scope="row">{s}</th>{['alta','media','monitoramento','reativacao',...(linha.some(([,v])=>v.outros)?['outros']:[])].map(k=><td key={k}>{g[k].toLocaleString('pt-BR')}</td>)}</tr>)}</tbody>
           </table></div>}
         </section></> :
-        aba==='Distribuição' ? <section className="panel"><h2>Distribuição de lotes</h2>
-          <div className="toolbar batch">
-            <button onClick={()=>setIds(colunas[0]?.casos.filter(c=>c.responsavel_id!==dono).map(c=>c.id)||[])}>Selecionar página</button>
-            <span>{ids.length} selecionados</span>
-            <label>Colaborador<select value={dono} onChange={e=>setDono(e.target.value)}><option value="">Escolher</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>
-            <button className="primary" disabled={ocupado||!dono||!ids.length} onClick={()=>{
-              if (confirm('Atribuir '+ids.length+' casos ao colaborador selecionado?')) salvar('atribuir_lote',{p_ids:ids,p_responsavel:dono},'Lote atribuído.')
-            }}>Atribuir lote</button>
-          </div>
-          {exibidas.map(c=><div key={c.etapa} className="table"><table><thead><tr><th>Seleção</th><th>Caso</th><th>Praça</th><th>Motivo</th><th>Responsável</th></tr></thead>
-            <tbody>{c.casos.map(item=><tr key={item.id}><td><input type="checkbox" aria-label={'Selecionar caso '+item.id} checked={ids.includes(item.id)} onChange={e=>setIds(e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/></td>
-              <td><button disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></td><td>{item.praca}</td><td>{item.motivo}</td><td>{equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id?'Atribuído':'Sem responsável')}</td></tr>)}</tbody>
-            </table><Paginacao coluna={c} mudar={p=>{setIds([]);setPaginas({lote:p})}}/></div>)}
-        </section> :
         visao==='lista' ? <section className="panel"><h2>Carteira de acompanhamento</h2>
           {exibidas.map(c=><div className="table" key={c.etapa}><table className="carteira-lista"><thead><tr>
-            {['Caso','Entrada','Praça / subpraça','Motivo de entrada','Prioridade de entrada','Etapa','Responsável','Retorno','Última semana','Prioridade atual'].map(t=><th scope="col" key={t}>{t}</th>)}
+            {['Caso','Entrada','Praça / subpraça','Motivo de entrada','Prioridade de entrada','Etapa','Responsável','Retorno','Última semana','Prioridade atual','Atribuído em'].map(t=><th scope="col" key={t}>{t}</th>)}
           </tr></thead><tbody>{c.casos.map(item=>{
             const atual=item.evolucao_semanal?.[0]
             const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
-            return <tr key={item.id} className="caso-linha" onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button></th>
+            return <tr key={item.id} className="caso-linha" onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
               <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
               <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
-              <td>{atual?.semana || '—'}</td><td><Badge valor={atual?.prioridade}/></td>
+              <td>{item.ultima_semana||atual?.semana || '—'}</td><td><Badge valor={item.prioridade_atual||atual?.prioridade}/></td><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
             </tr>
           })}</tbody></table><Paginacao coluna={c} mudar={p=>setPaginas({lista:p})}/></div>)}
         </section> :
@@ -375,7 +387,7 @@ function CRM({usuario}) {
           : <Detalhe {...detalhe} ocupado={ocupado} salvar={salvar}/>}
       </PainelCaso>}
     </>}
-  </main>
+  </main></div>
 }
 
 function PainelCaso({fechar,children}) {
@@ -421,7 +433,9 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
           e.dataTransfer.setData('text/plain',item.id)
           setArrastado({id:item.id,etapa:item.etapa})
         }} onDragEnd={limpar}>
-        <div className="kanban-meta"><small>{item.semana_entrada}</small><Badge valor={item.prioridade}/></div>
+        <div className="kanban-meta"><small>Entrada {item.semana_entrada}</small><Badge valor={item.prioridade_atual||item.prioridade}/></div>
+        {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}
+        <small className="block">Atualização {item.ultima_semana||item.semana_entrada}</small>
         <h3><button className="kanban-abrir" disabled={ocupado} onClick={()=>abrir(item)}>{item.motivo || item.id}</button></h3>
         <p>{item.praca}</p>
         {item.proximo_contato && <Badge valor={item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}/>}

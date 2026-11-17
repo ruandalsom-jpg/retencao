@@ -29,6 +29,22 @@ Uma importação cria casos de Alta, Média e Reativação, atualiza a evoluçã
 
 ## Testar e publicar
 
+### Ativar a central de lotes em um banco já existente
+
+Execute **somente** `supabase/migrations/20261118000800_lotes_novidades.sql` no SQL Editor do projeto Retenção de Frota. Não execute novamente as migrações antigas. Esse arquivo roda em uma transação; não apaga casos, contatos ou evoluções. Precisa das migrações base 001 a 005 já instaladas.
+
+Após executar com sucesso, atualize o site ou clique em **Verificar novamente** na central. Sem essa migração, as novas telas mostram a ativação pendente e os atendimentos existentes continuam disponíveis.
+
+- **Distribuir casos:** prioridade atual ou de entrada, última semana, praça e responsável. Por padrão, só casos sem responsável. Selecione entre páginas ou os primeiros 50 do recorte, escolha o destinatário e revise antes de confirmar. Casos com outro responsável são transferências explícitas.
+- **Histórico de lotes:** título, destinatário, quantidade, semanas, autor e data. O lote conserva o registro original mesmo após futuras transferências; abrir o lote exibe apenas casos que o usuário ainda pode acessar.
+- **Novidades:** um aviso por lote e um aviso consolidado por colaborador/semana. Reimportar dados idênticos não gera novos avisos. Uma correção real na mesma semana reabre o aviso. A aplicação consulta novidades a cada 45 segundos enquanto visível e ao retornar à janela.
+- **Novos para mim:** casos ativos atribuídos após esta atualização que o destinatário ainda não abriu. Ler uma notificação não marca os casos como vistos. Atendimentos existentes não são anunciados retroativamente como lotes novos.
+- Os avisos ficam dentro do sistema; não há envio de e-mail, WhatsApp ou notificação do navegador.
+
+Validação local do banco: `npm run test:lotes` executa as migrações em PostgreSQL embarcado, com dados fictícios, e verifica permissões, conflitos de atribuição, notificações, leitura e transferências. Não conecta ao Supabase de produção.
+
+### Publicação
+
 1. Entre como supervisor, confira o Dashboard e atribua casos em **Distribuição**.
 2. Entre como colaborador e confira que a carteira mostra seus casos. Abra um cartão e registre um contato ou mova sua etapa.
 3. Importe o repositório `ruandalsom-jpg/retencao` no Vercel e configure as duas variáveis públicas do arquivo `.env.example`.
