@@ -165,27 +165,71 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
 }
 
 export function Novidades({db,tick,atualizar,abrirRecorte}) {
-  const [dados,setDados]=useState([]),[erro,setErro]=useState(''),[pagina,setPagina]=useState(0),[total,setTotal]=useState(0),[ocupado,setOcupado]=useState(false),[carregando,setCarregando]=useState(true)
+  const [dados,setDados]=useState([]),[erro,setErro]=useState(''),[aviso,setAviso]=useState(''),[pagina,setPagina]=useState(0),[total,setTotal]=useState(0),[ocupado,setOcupado]=useState(false),[carregando,setCarregando]=useState(true)
+  const [remocaoAtiva,setRemocaoAtiva]=useState(false)
   useEffect(()=>{
     let ativo=true;setCarregando(true)
-    db.from('novidades').select('*,lotes_distribuicao(titulo,quantidade),novidade_itens(count)',{count:'exact'}).order('atualizado_em',{ascending:false}).order('id').range(pagina*20,pagina*20+19)
-      .then(({data,count,error})=>{if(!ativo)return;if(error)setErro(error.message);else{setDados(data);setTotal(count);setErro('')}})
-      .catch(()=>{if(ativo)setErro('Não foi possível consultar as novidades.')}).finally(()=>{if(ativo)setCarregando(false)})
+    const consultar=filtrar=>{
+      let busca=db.from('novidades').select('*,lotes_distribuicao(titulo,quantidade,removido_do_historico_em),novidade_itens(count)',{count:'exact'})
+      if(filtrar)busca=busca.is('removida_em',null)
+      return busca.order('atualizado_em',{ascending:false}).order('id').range(pagina*20,pagina*20+19)
+    }
+    async function carregar(){
+      let resultado=await consultar(true)
+      const faltaColuna=resultado.error?.code==='42703'
+      if(faltaColuna)resultado=await consultar(false)
+      if(!ativo)return
+      if(resultado.error)throw resultado.error
+      setRemocaoAtiva(!faltaColuna)
+      setDados(resultado.data)
+      setTotal(resultado.count)
+      setErro('')
+      if(pagina>0&&pagina*20>=resultado.count)setPagina(Math.max(0,Math.ceil(resultado.count/20)-1))
+    }
+    carregar().catch(()=>{if(ativo)setErro('Não foi possível consultar as novidades.')}).finally(()=>{if(ativo)setCarregando(false)})
     return()=>{ativo=false}
   },[db,tick,pagina])
-  async function ler(item){setOcupado(true);setErro('');try{const {error}=await db.rpc('marcar_novidade_lida',{p_id:item.id,p_versao:item.atualizado_em});if(error)throw error;atualizar()}catch(e){setErro(e.message)}finally{setOcupado(false)}}
-  return <section><div className="toolbar"><p>Novos lotes e atualizações semanais da sua carteira.</p><button onClick={atualizar}>Atualizar</button></div>{erro&&<p className="erro" role="alert">{erro}</p>}
+  async function ler(item){setOcupado(true);setErro('');setAviso('');try{const {error}=await db.rpc('marcar_novidade_lida',{p_id:item.id,p_versao:item.atualizado_em});if(error)throw error;atualizar()}catch(e){setErro(e.message)}finally{setOcupado(false)}}
+  async function remover(item){
+    setOcupado(true);setErro('');setAviso('')
+    try{
+      const {error}=await db.rpc('remover_novidade',{p_id:item.id})
+      if(error){
+        if(error.code==='PGRST202')throw Error('Execute o SQL Ativar-Remocao-de-Novidades.sql no Supabase para liberar a remoção.')
+        throw error
+      }
+      setDados(lista=>lista.filter(x=>x.id!==item.id))
+      setAviso('Notificação removida.')
+      atualizar()
+    }catch(e){setErro(e.message||'Não foi possível remover a notificação.')}finally{setOcupado(false)}
+  }
+  async function limparLidas(){
+    setOcupado(true);setErro('');setAviso('')
+    try{
+      const {data,error}=await db.rpc('limpar_novidades_lidas')
+      if(error){
+        if(error.code==='PGRST202')throw Error('Execute o SQL Ativar-Remocao-de-Novidades.sql no Supabase para liberar a limpeza.')
+        throw error
+      }
+      setAviso(data?n(data)+' notificação(ões) lida(s) removida(s).':'Nenhuma notificação lida para remover.')
+      atualizar()
+    }catch(e){setErro(e.message||'Não foi possível limpar as notificações.')}finally{setOcupado(false)}
+  }
+  return <section><div className="toolbar"><p>Novos lotes e atualizações semanais da sua carteira.</p><button onClick={atualizar}>Atualizar</button>{remocaoAtiva&&dados.some(d=>d.lida_em)&&<button disabled={ocupado||carregando} onClick={limparLidas}>Limpar lidas</button>}</div>{erro&&<p className="erro" role="alert">{erro}</p>}{aviso&&<p className="aviso" role="status">{aviso}</p>}
     {carregando&&!dados.length?<p role="status">Carregando novidades…</p>:!dados.length&&<section className="panel">Nenhuma novidade por enquanto. Os próximos lotes e importações aparecerão aqui.</section>}
-    {dados.map(item=><article className={'panel novidade'+(!item.lida_em?' nao-lida':'')} key={item.id}>
-      <div className="toolbar"><span className="badge">{item.tipo==='lote'?'Novo lote':'Atualização semanal · '+item.semana}</span>{!item.lida_em&&<span className="badge badge-recuperados">Não lida</span>}<small>{dataHora(item.atualizado_em)}</small></div>
-      <h2>{item.tipo==='lote'?item.lotes_distribuicao?.titulo:n(item.novidade_itens?.[0]?.count)+' casos com dados atualizados'}</h2>
-      <p>{item.tipo==='lote'?n(item.lotes_distribuicao?.quantidade)+' casos atribuídos a você.':'Os indicadores foram atualizados. Isso não representa novos casos nem comprova o efeito do atendimento.'}</p>
-      <div className="toolbar"><button className="primary" onClick={()=>abrirRecorte({tipo:'novidade',id:item.id,titulo:item.tipo==='lote'?item.lotes_distribuicao?.titulo:'Atualização '+item.semana})}>Abrir casos</button><button disabled={ocupado||!!item.lida_em} onClick={()=>ler(item)}>{item.lida_em?'Lida':'Marcar como lida'}</button></div>
-    </article>)}<Paginas pagina={pagina} total={total} ocupado={carregando} mudar={setPagina}/>
+    {dados.map(item=>{
+      const loteRemovido=item.tipo==='lote'&&!!(item.lote_removido_em||item.lotes_distribuicao?.removido_do_historico_em)
+      return <article className={'panel novidade'+(!item.lida_em?' nao-lida':'')} key={item.id}>
+        <div className="toolbar"><span className={'badge'+(loteRemovido?' badge-vencido':'')}>{item.tipo==='lote'?(loteRemovido?'Lote removido':'Novo lote'):'Atualização semanal · '+item.semana}</span>{!item.lida_em&&<span className="badge badge-recuperados">Não lida</span>}<small>{dataHora(item.atualizado_em)}</small></div>
+        <h2>{item.tipo==='lote'?item.lotes_distribuicao?.titulo:n(item.novidade_itens?.[0]?.count)+' casos com dados atualizados'}</h2>
+        <p>{item.tipo==='lote'?(loteRemovido?'Este lote ('+n(item.lotes_distribuicao?.quantidade)+' casos) foi removido do histórico pelo supervisor. Os casos que continuam com você seguem disponíveis na carteira.':n(item.lotes_distribuicao?.quantidade)+' casos atribuídos a você.'):'Os indicadores foram atualizados. Isso não representa novos casos nem comprova o efeito do atendimento.'}</p>
+        <div className="toolbar"><button className="primary" onClick={()=>abrirRecorte({tipo:'novidade',id:item.id,titulo:item.tipo==='lote'?item.lotes_distribuicao?.titulo:'Atualização '+item.semana})}>Abrir casos</button><button disabled={ocupado||!!item.lida_em} onClick={()=>ler(item)}>{item.lida_em?'Lida':'Marcar como lida'}</button>{remocaoAtiva&&<button disabled={ocupado} onClick={()=>remover(item)}>Remover notificação</button>}</div>
+      </article>
+    })}<Paginas pagina={pagina} total={total} ocupado={carregando||ocupado} mudar={setPagina}/>
   </section>
 }
 
-export function HistoricoLotes({db,tick,abrirRecorte}) {
+export function HistoricoLotes({db,tick,atualizar,abrirRecorte}) {
   const [dados,setDados]=useState([]),[erro,setErro]=useState(''),[pagina,setPagina]=useState(0),[total,setTotal]=useState(0),[carregando,setCarregando]=useState(true)
   const [versao,setVersao]=useState(0)
   const [removendo,setRemovendo]=useState(false)
@@ -230,8 +274,9 @@ export function HistoricoLotes({db,tick,abrirRecorte}) {
       const {error}=await db.rpc('remover_lote_do_historico',{p_id:lote.id})
       if(error)throw error
       setDados(lista=>lista.filter(item=>item.id!==lote.id))
-      setAviso('Lote removido do histórico.')
+      setAviso('Lote removido do histórico e notificado ao destinatário.')
       setVersao(v=>v+1)
+      atualizar?.()
     }catch(e){setErro(e.message||'Não foi possível remover o lote.')}
     finally{setRemovendo(false)}
   }
