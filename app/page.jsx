@@ -494,14 +494,13 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
                 {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo</span>}
               </div>
             </div>
-            <h3 className="kanban-card-titulo">{item.nome_entregador || item.motivo || 'Sem sinalização'}</h3>
-            {item.nome_entregador && <p className="kanban-motivo">{item.motivo}</p>}
+            <h3 className="kanban-card-titulo" title={item.nome_entregador || item.motivo}>{item.nome_entregador || item.motivo || 'Sem sinalização'}</h3>
+            <p className="kanban-motivo" title={(item.nome_entregador?item.motivo+' · ':'')+item.praca}>{item.nome_entregador ? item.motivo+' · '+item.praca : item.praca}</p>
             <div className="kanban-tags">
               <span className="kanban-tag" title="Prioridade atual"><span className={'kanban-tag-bar bar-'+prioChave}/>{prio==='Media'?'Média':prio==='Reativacao'?'Reativação':prio}</span>
               <span className="kanban-tag" title="Semana de atualização">{item.ultima_semana||item.semana_entrada}</span>
               {item.proximo_contato && <span className={'kanban-tag kanban-tag-prazo prazo-'+prazoSituacao} title="Próximo contato"><Calendar size={12} aria-hidden="true"/>{dataBR(item.proximo_contato).slice(0,5)}</span>}
             </div>
-            <p className="kanban-praca" title={item.praca}>{item.praca}</p>
             <footer className="kanban-rodape">
               <span className={'kanban-dono'+(semDono?' sem-dono':'')} title={responsavel}><User size={12} aria-hidden="true"/><span>{responsavel}</span></span>
               <small className="kanban-entrada">Ent. {item.semana_entrada.replace(/^\d{4}-/,'')}</small>

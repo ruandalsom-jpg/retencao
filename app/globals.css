@@ -195,30 +195,30 @@ main>.aviso{position:fixed;right:20px;bottom:64px;z-index:5;max-width:calc(100vw
 :root[data-tema=escuro] ::-webkit-scrollbar-thumb{background:#252e42}
 :root[data-tema=escuro] ::-webkit-scrollbar-thumb:hover{background:#374361}
 
-.kanban{display:flex;gap:16px;align-items:stretch;overflow-x:auto;padding:4px 2px 14px}
-.kanban-col{--etapa:#94a3b8;flex:0 0 286px;width:286px;max-height:calc(100dvh - 220px);display:flex;flex-direction:column;background:transparent;color:var(--coluna-texto);padding:0;border:0}
+.kanban{display:grid;grid-template-columns:repeat(5,minmax(225px,1fr));gap:12px;align-items:stretch;overflow-x:auto;padding:4px 2px 14px}
+.kanban-col{--etapa:#94a3b8;width:auto;min-width:225px;max-height:calc(100dvh - 220px);display:flex;flex-direction:column;background:transparent;color:var(--coluna-texto);padding:0;border:0}
 .coluna-em_contato{--etapa:#5559df}.coluna-aguardando{--etapa:#fdab3d}
 .coluna-recuperado{--etapa:#00c875}.coluna-encerrado{--etapa:#8e8599}
-.kanban-col-header{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--superficie);border:1px solid var(--borda-card);border-top:4px solid var(--etapa);border-radius:10px 10px 8px 8px;padding:12px 14px;margin:0 0 10px;box-shadow:0 1px 3px #0f172a0d;flex-shrink:0}
-.kanban-col-header h2{font-size:15px;font-weight:700;margin:0;padding:0;border:0;background:none}
-.kanban-col-header small{background:var(--contador);color:var(--secundario);font-weight:600;font-size:12px;border-radius:999px;padding:2px 9px}
-.kanban-col-body{flex:1;min-height:140px;overflow-y:auto;background:var(--coluna);border:2px solid transparent;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:8px}
+.kanban-col-header{display:flex;justify-content:space-between;align-items:center;gap:6px;background:var(--superficie);border:1px solid var(--borda-card);border-top:4px solid var(--etapa);border-radius:9px 9px 7px 7px;padding:9px 12px;margin:0 0 8px;box-shadow:0 1px 3px #0f172a0d;flex-shrink:0}
+.kanban-col-header h2{font-size:14px;font-weight:700;margin:0;padding:0;border:0;background:none}
+.kanban-col-header small{background:var(--contador);color:var(--secundario);font-weight:600;font-size:11px;border-radius:999px;padding:2px 8px}
+.kanban-col-body{flex:1;min-height:140px;overflow-y:auto;background:var(--coluna);border:2px solid transparent;border-radius:9px;padding:7px;display:flex;flex-direction:column;gap:7px}
 .kanban-col.recebendo{border-color:transparent;background:transparent}
 .kanban-col.recebendo .kanban-col-body{border-color:#307ed1;background:var(--drop)}
-.kanban-col .kanban-card{background:var(--superficie);color:var(--texto);border:1px solid var(--borda-card);border-radius:10px;padding:12px;margin:0;box-shadow:0 1px 3px #0f172a0d;transition:border-color .15s,box-shadow .15s;cursor:pointer}
-.kanban-col .kanban-card:hover{border-color:#9aaec3;box-shadow:0 4px 12px #0f172a14}
+.kanban-col .kanban-card{background:var(--superficie);color:var(--texto);border:1px solid var(--borda-card);border-radius:9px;padding:10px 11px;margin:0;box-shadow:0 1px 2px #0f172a0a;transition:border-color .15s,box-shadow .15s;cursor:pointer}
+.kanban-col .kanban-card:hover{border-color:#9aaec3;box-shadow:0 3px 10px #0f172a14}
 .kanban-card[draggable=true]{cursor:grab}.kanban-card[draggable=true]:active{cursor:grabbing}
 .kanban-card[data-arrastando=true]{opacity:.42}
-.kanban-card-topo{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px}
-.kanban-card .kanban-caso-id{display:inline-block;width:auto;font-size:11px;font-weight:700;letter-spacing:.02em;margin:0;color:var(--secundario);font-variant-numeric:tabular-nums}
+.kanban-card-topo{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:3px}
+.kanban-card .kanban-caso-id{display:inline-block;width:auto;font-size:10.5px;font-weight:700;letter-spacing:.02em;margin:0;color:var(--secundario);font-variant-numeric:tabular-nums}
 .kanban-card .kanban-caso-id:hover{color:var(--card-link)}
 .kanban-card-flags{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-.kanban-card-flags .badge{font-size:10px;padding:2px 6px;border-radius:999px}
-.kanban-card-titulo{font-size:14px;font-weight:600;line-height:1.3;margin:0 0 8px;color:var(--texto)}
-.kanban-motivo{margin:-4px 0 8px;color:var(--secundario);font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kanban-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:7px}
-.kanban-tag{display:inline-flex;align-items:center;gap:5px;background:var(--campo);border:1px solid var(--borda);border-radius:5px;padding:2px 7px;font-size:11px;font-weight:600;color:var(--card-texto);height:22px;overflow:hidden}
-.kanban-tag-bar{width:4px;height:22px;margin-left:-7px;flex-shrink:0;background:#94a3b8}
+.kanban-card-flags .badge{font-size:10px;padding:1px 6px;border-radius:999px}
+.kanban-card-titulo{font-size:13px;font-weight:650;line-height:1.25;margin:0 0 3px;color:var(--texto);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kanban-motivo{margin:0 0 6px;color:var(--secundario);font-size:11.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kanban-tags{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:6px}
+.kanban-tag{display:inline-flex;align-items:center;gap:4px;background:var(--campo);border:1px solid var(--borda);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:600;color:var(--card-texto);height:20px;overflow:hidden}
+.kanban-tag-bar{width:3.5px;height:20px;margin-left:-6px;flex-shrink:0;background:#94a3b8}
 .kanban-tag-bar.bar-alta{background:#e2445c}
 .kanban-tag-bar.bar-media{background:#fdab3d}
 .kanban-tag-bar.bar-reativacao{background:#7c3aed}
@@ -227,13 +227,12 @@ main>.aviso{position:fixed;right:20px;bottom:64px;z-index:5;max-width:calc(100vw
 .kanban-tag-prazo.prazo-hoje{background:#fff0cc;color:#805300;border-color:#f2d488}
 :root[data-tema=escuro] .kanban-tag-prazo.prazo-vencido{background:#4c1324;color:#fda4af;border-color:#881337}
 :root[data-tema=escuro] .kanban-tag-prazo.prazo-hoje{background:#452c06;color:#fcd34d;border-color:#78350f}
-.kanban-praca{margin:0 0 8px;color:var(--secundario);font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kanban-rodape{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--separador);padding-top:8px}
-.kanban-dono{display:inline-flex;align-items:center;gap:5px;background:var(--campo);border:1px solid var(--borda);border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--texto);max-width:165px}
+.kanban-rodape{display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid var(--separador);padding-top:6px}
+.kanban-dono{display:inline-flex;align-items:center;gap:4px;background:var(--campo);border:1px solid var(--borda);border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:600;color:var(--texto);max-width:150px}
 .kanban-dono>svg{color:#3b82f6;flex-shrink:0}
 .kanban-dono.sem-dono{color:var(--secundario);font-weight:500}
 .kanban-dono.sem-dono>svg{color:var(--secundario)}
 .kanban-dono>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kanban-entrada{font-size:11px;color:var(--secundario);white-space:nowrap}
+.kanban-entrada{font-size:10.5px;color:var(--secundario);white-space:nowrap}
 .kanban-col .toolbar{gap:5px;justify-content:center;padding-top:4px}
 .kanban-col .toolbar button{background:var(--card-select);color:var(--card-select-texto);border:1px solid var(--card-select-borda);font-size:12px;padding:5px 9px}

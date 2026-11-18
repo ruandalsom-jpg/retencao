@@ -25,6 +25,12 @@ export function tendenciaSemanal(evolucao) {
   if (!Array.isArray(evolucao) || evolucao.length<2) return null
   const [atual,anterior]=[...evolucao].sort((a,b)=>String(b.semana||'').localeCompare(String(a.semana||'')))
   const pAtual=pesoPrioridade(atual?.prioridade), pAnterior=pesoPrioridade(anterior?.prioridade)
+  if (pAtual===4) {
+    if (pAnterior!==null && pAnterior<4) return 'melhora'
+    const shAtual=numeroIndicador(atual?.indicadores?.horas_online), shAnt=numeroIndicador(anterior?.indicadores?.horas_online)
+    if (shAtual!==null && shAnt!==null && shAtual>shAnt) return 'melhora'
+    return null
+  }
   if (pAtual!==null && pAnterior!==null && pAtual!==pAnterior) return pAtual>pAnterior?'melhora':'piora'
   for (const chave of ['horas_online','pedidos']) {
     const vAtual=numeroIndicador(atual?.indicadores?.[chave]), vAnterior=numeroIndicador(anterior?.indicadores?.[chave])
