@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Avatar } from './perfil'
 import { Columns3, CalendarClock, Bell, UsersRound, Archive, LayoutDashboard, ShieldCheck, PanelLeftClose, PanelLeftOpen, ListTodo } from 'lucide-react'
 
-const campos='id,entregador_id,motivo,prioridade,prioridade_atual,semana_entrada,ultima_semana,praca,responsavel_id,aberto,etapa,proximo_contato,atribuido_em,visto_em'
+const campos='id,entregador_id,motivo,prioridade,prioridade_atual,semana_entrada,ultima_semana,praca,responsavel_id,aberto,etapa,proximo_contato,atribuido_em,visto_em,nome_entregador:dados_origem->>NomeDriver'
 const motivosPadrao=['Queda critica','Inatividade recente','Inatividade recorrente','Queda moderada','Inatividade prolongada','Em recuperacao','Historico insuficiente','Monitoramento']
 const dataHora=v=>v?new Date(v).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}):'—'
 const n=v=>Number(v||0).toLocaleString('pt-BR')
@@ -78,7 +78,7 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
     if(filtros.prioridade)q=q.in(filtros.tipo,variantes(filtros.prioridade))
     if(filtros.motivo)q=q.ilike('motivo','%'+filtros.motivo+'%')
     const trecho=filtros.busca.trim().replace(/[^\p{L}\p{N} ._-]/gu,'').trim()
-    if(trecho)q=q.or('id.ilike.%'+trecho+'%,entregador_id.ilike.%'+trecho+'%,motivo.ilike.%'+trecho+'%')
+    if(trecho)q=q.or('id.ilike.%'+trecho+'%,entregador_id.ilike.%'+trecho+'%,motivo.ilike.%'+trecho+'%,dados_origem->>NomeDriver.ilike.%'+trecho+'%')
     if(filtros.semana)q=q.eq('ultima_semana',filtros.semana.trim())
     if(filtros.praca.trim())q=q.ilike('praca','%'+filtros.praca.trim()+'%')
     if(filtros.responsavel==='livre')q=q.is('responsavel_id',null)
@@ -130,7 +130,7 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
         <label>Classificação<select value={filtros.tipo} onChange={e=>filtrar('tipo',e.target.value)}><option value="prioridade_atual">Prioridade atual</option><option value="prioridade">Prioridade de entrada</option></select></label>
         <label>Prioridade<select value={filtros.prioridade} onChange={e=>filtrar('prioridade',e.target.value)}><option value="">Todas</option>{['Alta','Média','Monitoramento','Reativação'].map(p=><option key={p}>{p}</option>)}</select></label>
         <label>Motivo / sinalização<select value={filtros.motivo} onChange={e=>filtrar('motivo',e.target.value)}><option value="">Todos</option>{motivosPadrao.map(m=><option key={m} value={m}>{m}</option>)}</select></label>
-        <label>Caso, UUID ou motivo<input placeholder="RET-..., UUID ou motivo" value={filtros.busca} onChange={e=>filtrar('busca',e.target.value)}/></label>
+        <label>Caso, nome, UUID ou motivo<input placeholder="Nome, RET-..., UUID..." value={filtros.busca} onChange={e=>filtrar('busca',e.target.value)}/></label>
         <label>Última semana<input placeholder="AAAA-W00" value={filtros.semana} onChange={e=>filtrar('semana',e.target.value)}/></label>
         <label>Praça<input placeholder="Todas" value={filtros.praca} onChange={e=>filtrar('praca',e.target.value)}/></label>
         <label>Responsável atual<select value={filtros.responsavel} onChange={e=>filtrar('responsavel',e.target.value)}><option value="livre">Sem responsável</option><option value="">Todos · inclui transferências</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>
@@ -153,9 +153,9 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
     </section>}
     <fieldset disabled={salvando||!!revisao} className="central-fieldset">
       <section className="panel fila-distribuicao" aria-label="Fila de casos">
-        <div className="table"><table><thead><tr>{['Seleção','Caso / motivo','Entrada','Última semana','Prioridade atual','Praça','Responsável'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{casos.map(c=><tr key={c.id}>
+        <div className="table"><table><thead><tr>{['Seleção','Caso / entregador · motivo','Entrada','Última semana','Prioridade atual','Praça','Responsável'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{casos.map(c=><tr key={c.id}>
           <td><input type="checkbox" aria-label={'Selecionar '+c.id} disabled={carregando||(!selecionados.some(x=>x.id===c.id)&&selecionados.length>=50)} checked={selecionados.some(x=>x.id===c.id)} onChange={()=>selecionar(c)}/></td>
-          <td><button className="caso-link" onClick={()=>abrir(c)}>{c.id.slice(0,16)}</button><small className="block">{c.motivo}</small></td><td>{c.semana_entrada}</td><td>{c.ultima_semana||c.semana_entrada}</td><td><Prioridade valor={c.prioridade_atual||c.prioridade}/></td><td>{c.praca}</td><td>{equipe.find(e=>e.id===c.responsavel_id)?.nome||(c.responsavel_id?'Atribuído':'Sem responsável')}</td>
+          <td><button className="caso-link" onClick={()=>abrir(c)}>{c.id.slice(0,16)}</button><small className="block">{c.nome_entregador?c.nome_entregador+' · '+c.motivo:c.motivo}</small></td><td>{c.semana_entrada}</td><td>{c.ultima_semana||c.semana_entrada}</td><td><Prioridade valor={c.prioridade_atual||c.prioridade}/></td><td>{c.praca}</td><td>{equipe.find(e=>e.id===c.responsavel_id)?.nome||(c.responsavel_id?'Atribuído':'Sem responsável')}</td>
         </tr>)}</tbody></table></div>
         {carregando?<p role="status">Atualizando fila…</p>:!casos.length&&<p>Nenhum caso no recorte.</p>}
         <Paginas pagina={pagina} total={total} limite={limiteFilaDistribuicao} ocupado={carregando} mudar={setPagina}/>

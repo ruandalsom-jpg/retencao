@@ -14,7 +14,7 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 const db = url && key ? createClient(url, key) : null
 const etapas = { novo:'Novos casos', em_contato:'Em contato', aguardando:'Aguardando retorno', recuperado:'Recuperados', encerrado:'Encerrados' }
-const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato'
+const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato,nome_entregador:dados_origem->>NomeDriver'
 const limiteLista = 20
 const limiteKanban = 20
 const etapasAbertas = Object.keys(etapas).slice(0, 3)
@@ -218,7 +218,7 @@ function CRM({usuario,conta}) {
       }
       if (aba==='Carteira' || aba==='Distribuição') {
         const trecho=busca.trim().replace(/[^\p{L}\p{N} ._-]/gu,'').trim()
-        if (trecho) consulta=consulta.or('id.ilike.%'+trecho+'%,entregador_id.ilike.%'+trecho+'%,motivo.ilike.%'+trecho+'%')
+        if (trecho) consulta=consulta.or('id.ilike.%'+trecho+'%,entregador_id.ilike.%'+trecho+'%,motivo.ilike.%'+trecho+'%,dados_origem->>NomeDriver.ilike.%'+trecho+'%')
         if (prioridade) consulta=consulta.in('prioridade',prioridade==='Média'?['Media','Média']:prioridade==='Reativação'?['Reativacao','Reativação']:[prioridade])
         if (etapaFiltro) consulta=consulta.eq('etapa',etapaFiltro)
       }
@@ -345,7 +345,7 @@ function CRM({usuario,conta}) {
     {perfil && <>
       {aba!=='Acessos' && !centralAberta && <section className="panel toolbar" aria-label="Filtros">
         {(aba==='Carteira'||aba==='Distribuição') && <>
-          <label>Buscar caso, UUID ou motivo<input value={busca} onChange={e=>{setBusca(e.target.value);recorte()}}/></label>
+          <label>Buscar caso, nome, UUID ou motivo<input value={busca} onChange={e=>{setBusca(e.target.value);recorte()}}/></label>
           <label>Prioridade de entrada<select value={prioridade} onChange={e=>{setPrioridade(e.target.value);recorte()}}>
             <option value="">Todas</option>{['Alta','Média','Reativação','Monitoramento'].map(p=><option key={p}>{p}</option>)}
           </select></label>
@@ -383,8 +383,8 @@ function CRM({usuario,conta}) {
         </section><UsuariosAprovados db={db} usuario={usuario} versao={versao} ocupado={ocupado}
           alterar={(p,papel)=>salvar('alterar_papel_colaborador',{p_id:p.id,p_papel:papel,p_papel_atual:p.papel},'Papel atualizado.')}/></> :
         aba==='Retornos' ? <section className="panel"><h2>Retornos programados</h2>
-          {exibidas.map(c=><div className="table" key={c.etapa}><table><thead><tr><th>Caso</th><th>Prazo</th><th>Situação</th><th>Praça</th><th>Motivo</th></tr></thead>
-          <tbody>{c.casos.map(item=><tr key={item.id}><th scope="row"><button disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button></th>
+          {exibidas.map(c=><div className="table" key={c.etapa}><table><thead><tr><th>Caso / entregador</th><th>Prazo</th><th>Situação</th><th>Praça</th><th>Motivo</th></tr></thead>
+          <tbody>{c.casos.map(item=><tr key={item.id}><th scope="row"><button disabled={ocupado} onClick={()=>abrir(item)}>{item.id.slice(0,12)}</button>{item.nome_entregador&&<small className="block">{item.nome_entregador}</small>}</th>
             <td>{dataBR(item.proximo_contato)}</td><td><Badge valor={item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}/></td>
             <td>{item.praca}</td><td>{item.motivo}</td></tr>)}</tbody></table>
           <Paginacao coluna={c} mudar={p=>setPaginas({retornos:p})}/></div>)}
@@ -405,12 +405,12 @@ function CRM({usuario,conta}) {
         </section></> :
         visao==='lista' ? <section className="panel"><h2>Carteira de acompanhamento</h2>
           {exibidas.map(c=><div className="table" key={c.etapa}><table className="carteira-lista"><thead><tr>
-            {['Caso','Entrada','Praça / subpraça','Motivo de entrada','Prioridade de entrada','Etapa','Responsável','Retorno','Última semana','Prioridade atual','Atribuído em'].map(t=><th scope="col" key={t}>{t}</th>)}
+            {['Caso / entregador','Entrada','Praça / subpraça','Motivo de entrada','Prioridade de entrada','Etapa','Responsável','Retorno','Última semana','Prioridade atual','Atribuído em'].map(t=><th scope="col" key={t}>{t}</th>)}
           </tr></thead><tbody>{c.casos.map(item=>{
             const atual=item.evolucao_semanal?.[0]
             const tendencia=tendenciaSemanal(item.evolucao_semanal)
             const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
-            return <tr key={item.id} className={'caso-linha'+(tendencia?' tendencia-linha-'+tendencia:'')} onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora':'▼ Piora'}</span>}{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
+            return <tr key={item.id} className={'caso-linha'+(tendencia?' tendencia-linha-'+tendencia:'')} onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{item.nome_entregador&&<small className="block">{item.nome_entregador}</small>}{tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora':'▼ Piora'}</span>}{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
               <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
               <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
               <td>{item.ultima_semana||atual?.semana || '—'}</td><td><Badge valor={item.prioridade_atual||atual?.prioridade}/></td><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
@@ -494,7 +494,8 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
                 {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo</span>}
               </div>
             </div>
-            <h3 className="kanban-card-titulo">{item.motivo || 'Sem sinalização'}</h3>
+            <h3 className="kanban-card-titulo">{item.nome_entregador || item.motivo || 'Sem sinalização'}</h3>
+            {item.nome_entregador && <p className="kanban-motivo">{item.motivo}</p>}
             <div className="kanban-tags">
               <span className="kanban-tag" title="Prioridade atual"><span className={'kanban-tag-bar bar-'+prioChave}/>{prio==='Media'?'Média':prio==='Reativacao'?'Reativação':prio}</span>
               <span className="kanban-tag" title="Semana de atualização">{item.ultima_semana||item.semana_entrada}</span>
@@ -546,11 +547,13 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
   }
   return <section className="panel">
     <div className={'caso-diagnostico'+(tendencia?' neon-'+tendencia:'')}><small>{caso.id} · Entrada {caso.semana_entrada}</small>
-    <h2>{ind?.motivo || caso.motivo}</h2><Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>{tendencia&&<> <span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora na última semana':'▼ Piora na última semana'}</span></>}
+    <h2>{origem.NomeDriver || caso.nome_entregador || ind?.motivo || caso.motivo}</h2>
+    {(origem.NomeDriver || caso.nome_entregador) && <p>{ind?.motivo || caso.motivo}</p>}
+    <Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>{tendencia&&<> <span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora na última semana':'▼ Piora na última semana'}</span></>}
     {Number(ind?.semanas_inativo)>0 && <p>{indicador(ind.semanas_inativo,'semanas_inativo')} semana(s) sem produção</p>}</div>
     <h3>Identificação e contexto</h3>
     <dl className="dados-driver">
-      {[['UUID',caso.entregador_id],['Praça',caso.praca],['Subpraça',origem['Subpraça Principal']],['Próximo contato',dataBR(caso.proximo_contato)]].map(([rotulo,valor])=><div key={rotulo}><dt>{rotulo}</dt><dd>{valor || '—'}</dd></div>)}
+      {[['Entregador',origem.NomeDriver || caso.nome_entregador],['UUID',caso.entregador_id],['Praça',caso.praca],['Subpraça',origem['Subpraça Principal']],['Próximo contato',dataBR(caso.proximo_contato)]].map(([rotulo,valor])=><div key={rotulo}><dt>{rotulo}</dt><dd>{valor || '—'}</dd></div>)}
     </dl>
     {caso.aberto && <article><h3>Pergunta sugerida para o atendimento</h3><p>{pergunta}</p>
       {contatos[0] && <p>Último contato · {contatos[0].resultado}</p>}

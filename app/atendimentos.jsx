@@ -50,12 +50,13 @@ function useConsulta(db, nome, parametros, versao) {
 
 function Fila({ casos, abrir, equipe = false }) {
   return <div className="table"><table>
-    <thead><tr><th>Caso</th><th>Situação</th><th>Prazo</th><th>Atraso</th><th>Praça</th>{equipe && <th>Responsável</th>}</tr></thead>
+    <thead><tr><th>Caso / entregador</th><th>Situação</th><th>Prazo</th><th>Atraso</th><th>Praça</th>{equipe && <th>Responsável</th>}</tr></thead>
     <tbody>{casos.map(c => {
       const situacao = c.situacao || ({1:'Vencido',2:'Hoje',3:'Sem tentativa'})[c.ordem]
       const atraso = c.proximo_contato && situacao === 'Vencido'
         ? (Date.parse(hoje()) - Date.parse(c.proximo_contato)) / 86400000 : null
-      return <tr key={c.id}><th scope="row"><button className="caso-link" onClick={() => abrir(c)}>{c.id}</button><small className="block">{c.motivo}</small></th>
+      const nomeDriver = c.dados_origem?.NomeDriver || c.nome_entregador
+      return <tr key={c.id}><th scope="row"><button className="caso-link" onClick={() => abrir(c)}>{c.id}</button><small className="block">{nomeDriver ? nomeDriver + ' · ' + c.motivo : c.motivo}</small></th>
         <td><span className={'badge badge-'+(situacao==='Vencido'?'vencido':situacao==='Hoje'?'hoje':'')}>{situacao}</span></td>
         <td>{dataBR(c.proximo_contato)}</td><td>{atraso === null ? '—' : atraso + (atraso===1?' dia':' dias')}</td>
         <td>{c.praca}</td>{equipe && <td>{c.responsavel}</td>}
