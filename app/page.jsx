@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import { Calendar, User } from 'lucide-react'
 import { hoje, normalize } from './operacao.mjs'
 import { Avatar, PerfilUsuario } from './perfil'
 import { MeuDia, PainelAtendimentos } from './atendimentos'
@@ -15,7 +16,7 @@ const db = url && key ? createClient(url, key) : null
 const etapas = { novo:'Novos casos', em_contato:'Em contato', aguardando:'Aguardando retorno', recuperado:'Recuperados', encerrado:'Encerrados' }
 const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato'
 const limiteLista = 20
-const limiteKanban = 5
+const limiteKanban = 20
 const etapasAbertas = Object.keys(etapas).slice(0, 3)
 
 function Badge({valor}) {
@@ -468,33 +469,46 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
         mover(arrastado.id,c.etapa)
         limpar()
       }}>
-      <h2>{etapas[c.etapa]} <small>{c.total}</small></h2>
-      {c.casos.map(item=>{
-        const tendencia=tendenciaSemanal(item.evolucao_semanal)
-        return <article key={item.id} className={'kanban-card'+(tendencia?' neon-'+tendencia:'')}
-          data-arrastando={arrastado?.id===item.id}
-          draggable={item.aberto&&!ocupado}
-          onDragStart={e=>{
-            e.dataTransfer.effectAllowed='move'
-            e.dataTransfer.setData('text/plain',item.id)
-            setArrastado({id:item.id,etapa:item.etapa})
-          }} onDragEnd={limpar}>
-          <button className="kanban-abrir kanban-caso-id" disabled={ocupado} onClick={()=>abrir(item)} aria-label={'Abrir caso '+item.id}>{item.id}</button>
-          <div className="kanban-meta"><small>Entrada {item.semana_entrada}</small><Badge valor={item.prioridade_atual||item.prioridade}/></div>
-          {tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora na semana':'▼ Piora na semana'}</span>}
-          {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}
-          <small className="block">Atualização {item.ultima_semana||item.semana_entrada}</small>
-          <h3><button className="kanban-abrir" disabled={ocupado} onClick={()=>abrir(item)}>{item.motivo || item.id}</button></h3>
-          <p>{item.praca}</p>
-          {item.proximo_contato && <Badge valor={item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}/>}
-          {item.proximo_contato && <small> {dataBR(item.proximo_contato)}</small>}
-          <div className="kanban-responsavel">{nomeResponsavel(item.responsavel_id)}</div>
-          {item.aberto && <label>Mover para<select disabled={ocupado} value={item.etapa} onChange={e=>mover(item.id,e.target.value)}>
-            {etapasAbertas.map(id=><option key={id} value={id}>{etapas[id]}</option>)}
-          </select></label>}
-        </article>
-      })}
-      <Paginacao coluna={c} mudar={p=>mudarPagina(c.etapa,p)}/>
+      <header className="kanban-col-header"><h2>{etapas[c.etapa]}</h2><small>{c.total}</small></header>
+      <div className="kanban-col-body">
+        {c.casos.map(item=>{
+          const tendencia=tendenciaSemanal(item.evolucao_semanal)
+          const prio=item.prioridade_atual||item.prioridade||'—'
+          const prioChave=normalize(prio).replace(/[^a-z0-9]+/g,'-')
+          const responsavel=nomeResponsavel(item.responsavel_id)
+          const semDono=responsavel==='Sem responsável'
+          const prazoSituacao=item.proximo_contato?(item.proximo_contato<hoje()?'vencido':item.proximo_contato===hoje()?'hoje':'agendado'):''
+          return <article key={item.id} className={'kanban-card'+(tendencia?' neon-'+tendencia:'')}
+            data-arrastando={arrastado?.id===item.id}
+            draggable={item.aberto&&!ocupado}
+            onClick={()=>{if(!ocupado)abrir(item)}}
+            onDragStart={e=>{
+              e.dataTransfer.effectAllowed='move'
+              e.dataTransfer.setData('text/plain',item.id)
+              setArrastado({id:item.id,etapa:item.etapa})
+            }} onDragEnd={limpar}>
+            <div className="kanban-card-topo">
+              <button type="button" className="kanban-abrir kanban-caso-id" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}} aria-label={'Abrir caso '+item.id}>{item.id.slice(0,12)}</button>
+              <div className="kanban-card-flags">
+                {tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora':'▼ Piora'}</span>}
+                {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo</span>}
+              </div>
+            </div>
+            <h3 className="kanban-card-titulo">{item.motivo || 'Sem sinalização'}</h3>
+            <div className="kanban-tags">
+              <span className="kanban-tag" title="Prioridade atual"><span className={'kanban-tag-bar bar-'+prioChave}/>{prio==='Media'?'Média':prio==='Reativacao'?'Reativação':prio}</span>
+              <span className="kanban-tag" title="Semana de atualização">{item.ultima_semana||item.semana_entrada}</span>
+              {item.proximo_contato && <span className={'kanban-tag kanban-tag-prazo prazo-'+prazoSituacao} title="Próximo contato"><Calendar size={12} aria-hidden="true"/>{dataBR(item.proximo_contato).slice(0,5)}</span>}
+            </div>
+            <p className="kanban-praca" title={item.praca}>{item.praca}</p>
+            <footer className="kanban-rodape">
+              <span className={'kanban-dono'+(semDono?' sem-dono':'')} title={responsavel}><User size={12} aria-hidden="true"/><span>{responsavel}</span></span>
+              <small className="kanban-entrada">Ent. {item.semana_entrada.replace(/^\d{4}-/,'')}</small>
+            </footer>
+          </article>
+        })}
+        <Paginacao coluna={c} mudar={p=>mudarPagina(c.etapa,p)}/>
+      </div>
     </section>
   })}</section>
 }
