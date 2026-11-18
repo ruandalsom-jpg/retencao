@@ -160,3 +160,29 @@ main>.aviso{position:fixed;right:20px;bottom:64px;z-index:5;max-width:calc(100vw
 .confirmacao-lote .toolbar{justify-content:flex-end}
 .confirmacao-lote button.confirmar-remocao{background:#a72e43;color:white;border-color:#a72e43;font-weight:600}
 .confirmacao-lote button.confirmar-remocao:hover:not(:disabled){background:#852437;border-color:#852437}
+
+@keyframes pulso-neon-melhora{
+  0%,100%{box-shadow:0 0 0 1px #10b981,0 0 10px #10b98155,inset 0 0 6px #10b9811f}
+  50%{box-shadow:0 0 0 2px #10b981,0 0 18px #10b98199,inset 0 0 10px #10b98133}
+}
+@keyframes pulso-neon-piora{
+  0%,100%{box-shadow:0 0 0 1px #ef4444,0 0 10px #ef444455,inset 0 0 6px #ef44441f}
+  50%{box-shadow:0 0 0 2px #ef4444,0 0 18px #ef444499,inset 0 0 10px #ef444433}
+}
+.kanban-col .kanban-card.neon-melhora,.caso-diagnostico.neon-melhora{
+  border-color:#10b981;
+  animation:pulso-neon-melhora 2.4s ease-in-out infinite;
+}
+.kanban-col .kanban-card.neon-piora,.caso-diagnostico.neon-piora{
+  border-color:#ef4444;
+  animation:pulso-neon-piora 2.4s ease-in-out infinite;
+}
+.badge-tendencia-melhora{background:#d1fae5;color:#065f46;border:1px solid #34d399;font-weight:700}
+.badge-tendencia-piora{background:#fee2e2;color:#991b1b;border:1px solid #f87171;font-weight:700}
+:root[data-tema=escuro] .badge-tendencia-melhora{background:#064e3b;color:#6ee7b7;border-color:#10b981}
+:root[data-tema=escuro] .badge-tendencia-piora{background:#7f1d1d;color:#fca5a5;border-color:#ef4444}
+.carteira-lista tr.tendencia-linha-melhora th:first-child{box-shadow:inset 4px 0 0 #10b981}
+.carteira-lista tr.tendencia-linha-piora th:first-child{box-shadow:inset 4px 0 0 #ef4444}
+@media(prefers-reduced-motion:reduce){
+  .kanban-col .kanban-card.neon-melhora,.caso-diagnostico.neon-melhora,.kanban-col .kanban-card.neon-piora,.caso-diagnostico.neon-piora{animation:none}
+}

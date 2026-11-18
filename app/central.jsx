@@ -5,6 +5,7 @@ import { Avatar } from './perfil'
 import { Columns3, CalendarClock, Bell, UsersRound, Archive, LayoutDashboard, ShieldCheck, PanelLeftClose, PanelLeftOpen, ListTodo } from 'lucide-react'
 
 const campos='id,entregador_id,motivo,prioridade,prioridade_atual,semana_entrada,ultima_semana,praca,responsavel_id,aberto,etapa,proximo_contato,atribuido_em,visto_em'
+const motivosPadrao=['Queda critica','Inatividade recente','Inatividade recorrente','Queda moderada','Inatividade prolongada','Em recuperacao','Historico insuficiente','Monitoramento']
 const dataHora=v=>v?new Date(v).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}):'—'
 const n=v=>Number(v||0).toLocaleString('pt-BR')
 const variantes=p=>p==='Média'?['Média','Media']:p==='Reativação'?['Reativação','Reativacao']:[p]
@@ -66,7 +67,7 @@ function Paginas({pagina,total,limite=20,mudar,ocupado}) {return <div className=
 const limiteFilaDistribuicao=5
 
 export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
-  const [filtros,setFiltros]=useState({prioridade:'',tipo:'prioridade_atual',semana:'',praca:'',responsavel:responsavelInicial||'livre'})
+  const [filtros,setFiltros]=useState({prioridade:'',tipo:'prioridade_atual',motivo:'',busca:'',semana:'',praca:'',responsavel:responsavelInicial||'livre'})
   const [pagina,setPagina]=useState(0),[total,setTotal]=useState(0),[casos,setCasos]=useState([])
   const [equipe,setEquipe]=useState([]),[selecionados,setSelecionados]=useState([]),[destino,setDestino]=useState('')
   const [titulo,setTitulo]=useState(''),[revisao,setRevisao]=useState(null),[erro,setErro]=useState(''),[aviso,setAviso]=useState('')
@@ -75,6 +76,9 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
   const consulta=useCallback(()=>{
     let q=db.from('casos').select(campos,{count:'exact'}).eq('aberto',true).order('ultima_semana',{ascending:false}).order('id')
     if(filtros.prioridade)q=q.in(filtros.tipo,variantes(filtros.prioridade))
+    if(filtros.motivo)q=q.ilike('motivo','%'+filtros.motivo+'%')
+    const trecho=filtros.busca.trim().replace(/[^\p{L}\p{N} ._-]/gu,'').trim()
+    if(trecho)q=q.or('id.ilike.%'+trecho+'%,entregador_id.ilike.%'+trecho+'%,motivo.ilike.%'+trecho+'%')
     if(filtros.semana)q=q.eq('ultima_semana',filtros.semana.trim())
     if(filtros.praca.trim())q=q.ilike('praca','%'+filtros.praca.trim()+'%')
     if(filtros.responsavel==='livre')q=q.is('responsavel_id',null)
@@ -125,9 +129,12 @@ export function Distribuicao({db,abrir,concluido,responsavelInicial}) {
       <div className="panel toolbar filtros-central">
         <label>Classificação<select value={filtros.tipo} onChange={e=>filtrar('tipo',e.target.value)}><option value="prioridade_atual">Prioridade atual</option><option value="prioridade">Prioridade de entrada</option></select></label>
         <label>Prioridade<select value={filtros.prioridade} onChange={e=>filtrar('prioridade',e.target.value)}><option value="">Todas</option>{['Alta','Média','Monitoramento','Reativação'].map(p=><option key={p}>{p}</option>)}</select></label>
+        <label>Motivo / sinalização<select value={filtros.motivo} onChange={e=>filtrar('motivo',e.target.value)}><option value="">Todos</option>{motivosPadrao.map(m=><option key={m} value={m}>{m}</option>)}</select></label>
+        <label>Caso, UUID ou motivo<input placeholder="RET-..., UUID ou motivo" value={filtros.busca} onChange={e=>filtrar('busca',e.target.value)}/></label>
         <label>Última semana<input placeholder="AAAA-W00" value={filtros.semana} onChange={e=>filtrar('semana',e.target.value)}/></label>
         <label>Praça<input placeholder="Todas" value={filtros.praca} onChange={e=>filtrar('praca',e.target.value)}/></label>
         <label>Responsável atual<select value={filtros.responsavel} onChange={e=>filtrar('responsavel',e.target.value)}><option value="livre">Sem responsável</option><option value="">Todos · inclui transferências</option>{equipe.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>
+        <button type="button" onClick={()=>{setFiltros({prioridade:'',tipo:'prioridade_atual',motivo:'',busca:'',semana:'',praca:'',responsavel:'livre'});setPagina(0);setSelecionados([]);setRevisao(null);setAviso('')}}>Limpar filtros</button>
       </div>
       <section className="panel lote-compositor"><h2>Preparar lote</h2><div className="toolbar"><button disabled={carregando} onClick={primeiros}>Selecionar até 50 do recorte</button><button disabled={!selecionados.length} onClick={()=>{setSelecionados([]);setAviso('')}}>Limpar seleção</button><small>A seleção é mantida ao trocar de página.</small></div><div className="toolbar campos-lote">
         <label>Título do lote<input value={titulo} maxLength={120} placeholder="Ex.: W46 · Alta · São Paulo" onChange={e=>setTitulo(e.target.value)}/></label>

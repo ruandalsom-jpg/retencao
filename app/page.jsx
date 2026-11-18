@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { hoje, normalize } from './operacao.mjs'
 import { Avatar, PerfilUsuario } from './perfil'
 import { MeuDia, PainelAtendimentos } from './atendimentos'
-import { indicador } from './indicadores.mjs'
+import { indicador, tendenciaSemanal } from './indicadores.mjs'
 import { useCentral, MenuLateral, CentralPendente, Distribuicao, Novidades, HistoricoLotes, PainelEquipe, UsuariosAprovados } from './central'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -207,10 +207,14 @@ function CRM({usuario,conta}) {
         if (recorteRetornos==='hoje') consulta=consulta.eq('proximo_contato',dia)
         if (recorteRetornos==='futuros') consulta=consulta.gt('proximo_contato',dia)
       } else if (etapa==='lista') {
-        consulta=db.from('casos').select(campos+',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade)',{count:'exact'})
+        consulta=db.from('casos').select(campos+',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade,indicadores)',{count:'exact'})
           .order('semana',{referencedTable:'evolucao_semanal',ascending:false})
-          .limit(1,{referencedTable:'evolucao_semanal'})
-      } else consulta=consulta.eq('etapa',etapa)
+          .limit(2,{referencedTable:'evolucao_semanal'})
+      } else {
+        consulta=db.from('casos').select(campos+',evolucao_semanal(semana,prioridade,indicadores)',{count:'exact'}).eq('etapa',etapa)
+          .order('semana',{referencedTable:'evolucao_semanal',ascending:false})
+          .limit(2,{referencedTable:'evolucao_semanal'})
+      }
       if (aba==='Carteira' || aba==='Distribuição') {
         const trecho=busca.trim().replace(/[^\p{L}\p{N} ._-]/gu,'').trim()
         if (trecho) consulta=consulta.or('id.ilike.%'+trecho+'%,entregador_id.ilike.%'+trecho+'%,motivo.ilike.%'+trecho+'%')
@@ -229,7 +233,7 @@ function CRM({usuario,conta}) {
         if(recorteLote){
           const rel=recorteLote.tipo==='lote'?'lote_itens':'novidade_itens'
           const coluna=recorteLote.tipo==='lote'?'lote_id':'novidade_id'
-          const selecao=campos+(etapa==='lista'?',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade)':'')
+          const selecao=campos+(etapa==='lista'?',subpraca:dados_origem->>Subpraça Principal,evolucao_semanal(semana,prioridade,indicadores)':',evolucao_semanal(semana,prioridade,indicadores)')
           consulta=consulta.select(selecao+','+rel+'!inner('+coluna+')',{count:'exact'}).eq(rel+'.'+coluna,recorteLote.id)
         }
       }
@@ -403,8 +407,9 @@ function CRM({usuario,conta}) {
             {['Caso','Entrada','Praça / subpraça','Motivo de entrada','Prioridade de entrada','Etapa','Responsável','Retorno','Última semana','Prioridade atual','Atribuído em'].map(t=><th scope="col" key={t}>{t}</th>)}
           </tr></thead><tbody>{c.casos.map(item=>{
             const atual=item.evolucao_semanal?.[0]
+            const tendencia=tendenciaSemanal(item.evolucao_semanal)
             const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
-            return <tr key={item.id} className="caso-linha" onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
+            return <tr key={item.id} className={'caso-linha'+(tendencia?' tendencia-linha-'+tendencia:'')} onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora':'▼ Piora'}</span>}{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
               <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
               <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
               <td>{item.ultima_semana||atual?.semana || '—'}</td><td><Badge valor={item.prioridade_atual||atual?.prioridade}/></td><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
@@ -464,27 +469,31 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
         limpar()
       }}>
       <h2>{etapas[c.etapa]} <small>{c.total}</small></h2>
-      {c.casos.map(item=><article key={item.id} className="kanban-card"
-        data-arrastando={arrastado?.id===item.id}
-        draggable={item.aberto&&!ocupado}
-        onDragStart={e=>{
-          e.dataTransfer.effectAllowed='move'
-          e.dataTransfer.setData('text/plain',item.id)
-          setArrastado({id:item.id,etapa:item.etapa})
-        }} onDragEnd={limpar}>
-        <button className="kanban-abrir kanban-caso-id" disabled={ocupado} onClick={()=>abrir(item)} aria-label={'Abrir caso '+item.id}>{item.id}</button>
-        <div className="kanban-meta"><small>Entrada {item.semana_entrada}</small><Badge valor={item.prioridade_atual||item.prioridade}/></div>
-        {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}
-        <small className="block">Atualização {item.ultima_semana||item.semana_entrada}</small>
-        <h3><button className="kanban-abrir" disabled={ocupado} onClick={()=>abrir(item)}>{item.motivo || item.id}</button></h3>
-        <p>{item.praca}</p>
-        {item.proximo_contato && <Badge valor={item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}/>}
-        {item.proximo_contato && <small> {dataBR(item.proximo_contato)}</small>}
-        <div className="kanban-responsavel">{nomeResponsavel(item.responsavel_id)}</div>
-        {item.aberto && <label>Mover para<select disabled={ocupado} value={item.etapa} onChange={e=>mover(item.id,e.target.value)}>
-          {etapasAbertas.map(id=><option key={id} value={id}>{etapas[id]}</option>)}
-        </select></label>}
-      </article>)}
+      {c.casos.map(item=>{
+        const tendencia=tendenciaSemanal(item.evolucao_semanal)
+        return <article key={item.id} className={'kanban-card'+(tendencia?' neon-'+tendencia:'')}
+          data-arrastando={arrastado?.id===item.id}
+          draggable={item.aberto&&!ocupado}
+          onDragStart={e=>{
+            e.dataTransfer.effectAllowed='move'
+            e.dataTransfer.setData('text/plain',item.id)
+            setArrastado({id:item.id,etapa:item.etapa})
+          }} onDragEnd={limpar}>
+          <button className="kanban-abrir kanban-caso-id" disabled={ocupado} onClick={()=>abrir(item)} aria-label={'Abrir caso '+item.id}>{item.id}</button>
+          <div className="kanban-meta"><small>Entrada {item.semana_entrada}</small><Badge valor={item.prioridade_atual||item.prioridade}/></div>
+          {tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora na semana':'▼ Piora na semana'}</span>}
+          {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}
+          <small className="block">Atualização {item.ultima_semana||item.semana_entrada}</small>
+          <h3><button className="kanban-abrir" disabled={ocupado} onClick={()=>abrir(item)}>{item.motivo || item.id}</button></h3>
+          <p>{item.praca}</p>
+          {item.proximo_contato && <Badge valor={item.proximo_contato<hoje()?'Vencido':item.proximo_contato===hoje()?'Hoje':'Agendado'}/>}
+          {item.proximo_contato && <small> {dataBR(item.proximo_contato)}</small>}
+          <div className="kanban-responsavel">{nomeResponsavel(item.responsavel_id)}</div>
+          {item.aberto && <label>Mover para<select disabled={ocupado} value={item.etapa} onChange={e=>mover(item.id,e.target.value)}>
+            {etapasAbertas.map(id=><option key={id} value={id}>{etapas[id]}</option>)}
+          </select></label>}
+        </article>
+      })}
       <Paginacao coluna={c} mudar={p=>mudarPagina(c.etapa,p)}/>
     </section>
   })}</section>
@@ -505,6 +514,7 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
   const [acao,setAcao]=useState('manter')
   const [copiaNumero,setCopiaNumero]=useState('')
   const ultima=evolucao[0]
+  const tendencia=tendenciaSemanal(evolucao)
   const ind=ultima?.indicadores
   const origem=caso.dados_origem || {}
   const bruto=String(ind?.dados_origem?.Celular || origem.Celular || '').replace(/[^0-9]/g,'')
@@ -521,8 +531,8 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
     }
   }
   return <section className="panel">
-    <div className="caso-diagnostico"><small>{caso.id} · Entrada {caso.semana_entrada}</small>
-    <h2>{ind?.motivo || caso.motivo}</h2><Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>
+    <div className={'caso-diagnostico'+(tendencia?' neon-'+tendencia:'')}><small>{caso.id} · Entrada {caso.semana_entrada}</small>
+    <h2>{ind?.motivo || caso.motivo}</h2><Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>{tendencia&&<> <span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora na última semana':'▼ Piora na última semana'}</span></>}
     {Number(ind?.semanas_inativo)>0 && <p>{indicador(ind.semanas_inativo,'semanas_inativo')} semana(s) sem produção</p>}</div>
     <h3>Identificação e contexto</h3>
     <dl className="dados-driver">
