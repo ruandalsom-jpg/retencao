@@ -45,7 +45,7 @@ export function MenuLateral({perfil,aba,navegar,resumo,foto}) {
     <button className="recolher-menu" onClick={()=>setRecolhido(!recolhido)} aria-label={recolhido?'Expandir menu':'Recolher menu'} aria-expanded={!recolhido}>{recolhido?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button>
     <nav aria-label="Navegação principal">
       <small className="menu-grupo menu-texto">ACOMPANHAMENTO</small>
-      {[['Meu dia',ListTodo,'Meu dia'],['Carteira',Columns3,'Carteira',resumo?.novos],['Retornos',CalendarClock,'Retornos',resumo?.retornos],['Novidades',Bell,'Novidades',resumo?.novidades],
+      {[['Meu dia',ListTodo,'Meu dia'],['Carteira',Columns3,'Carteira',resumo?.novos],['Retornos',CalendarClock,'Retornos',resumo?.retornos],['Novidades',Bell,'Notificações',resumo?.novidades],
         ...(perfil.papel==='supervisor'?[['Distribuição',UsersRound,'Distribuir casos'],['Lotes',Archive,'Histórico de lotes'],['Dashboard',LayoutDashboard,'Dashboard'],['Acessos',ShieldCheck,'Acessos']]:[])].map(([id,Icone,nome,numero],i)=><div key={id}>
           {i===4 && <small className="menu-grupo menu-texto">GESTÃO</small>}
           <button aria-label={nome+(numero?' · '+numero:'')} title={recolhido?nome:undefined} aria-current={aba===id?'page':undefined} onClick={()=>navegar(id)}><Icone size={18} aria-hidden="true"/><span className="menu-texto">{nome}</span>{numero>0 && <span className="menu-contador">{n(numero)}</span>}</button>
@@ -57,7 +57,7 @@ export function MenuLateral({perfil,aba,navegar,resumo,foto}) {
 
 export function CentralPendente({central}) {
   return <section className="panel"><h2>{central.pronto===false?'Ativação da central de distribuição':'Conectando à central'}</h2>
-    <p>{central.pronto===false?'A atualização do banco precisa ser instalada para liberar lotes e novidades. Sua carteira e os atendimentos continuam disponíveis.':central.erro||'Verificando a conexão…'}</p>
+    <p>{central.pronto===false?'A atualização do banco precisa ser instalada para liberar lotes e notificações. Sua carteira e os atendimentos continuam disponíveis.':central.erro||'Verificando a conexão…'}</p>
     <button onClick={central.atualizar}>Verificar novamente</button></section>
 }
 
@@ -186,7 +186,7 @@ export function Novidades({db,tick,atualizar,abrirRecorte}) {
       setErro('')
       if(pagina>0&&pagina*20>=resultado.count)setPagina(Math.max(0,Math.ceil(resultado.count/20)-1))
     }
-    carregar().catch(()=>{if(ativo)setErro('Não foi possível consultar as novidades.')}).finally(()=>{if(ativo)setCarregando(false)})
+    carregar().catch(()=>{if(ativo)setErro('Não foi possível consultar as notificações.')}).finally(()=>{if(ativo)setCarregando(false)})
     return()=>{ativo=false}
   },[db,tick,pagina])
   async function ler(item){setOcupado(true);setErro('');setAviso('');try{const {error}=await db.rpc('marcar_novidade_lida',{p_id:item.id,p_versao:item.atualizado_em});if(error)throw error;atualizar()}catch(e){setErro(e.message)}finally{setOcupado(false)}}
@@ -216,7 +216,7 @@ export function Novidades({db,tick,atualizar,abrirRecorte}) {
     }catch(e){setErro(e.message||'Não foi possível limpar as notificações.')}finally{setOcupado(false)}
   }
   return <section><div className="toolbar"><p>Novos lotes e atualizações semanais da sua carteira.</p><button onClick={atualizar}>Atualizar</button>{remocaoAtiva&&dados.some(d=>d.lida_em)&&<button disabled={ocupado||carregando} onClick={limparLidas}>Limpar lidas</button>}</div>{erro&&<p className="erro" role="alert">{erro}</p>}{aviso&&<p className="aviso" role="status">{aviso}</p>}
-    {carregando&&!dados.length?<p role="status">Carregando novidades…</p>:!dados.length&&<section className="panel">Nenhuma novidade por enquanto. Os próximos lotes e importações aparecerão aqui.</section>}
+    {carregando&&!dados.length?<p role="status">Carregando notificações…</p>:!dados.length&&<section className="panel">Nenhuma notificação por enquanto. Os próximos lotes e importações aparecerão aqui.</section>}
     {dados.map(item=>{
       const loteRemovido=item.tipo==='lote'&&!!(item.lote_removido_em||item.lotes_distribuicao?.removido_do_historico_em)
       return <article className={'panel novidade'+(!item.lida_em?' nao-lida':'')} key={item.id}>

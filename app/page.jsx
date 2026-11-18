@@ -335,7 +335,7 @@ function CRM({usuario,conta}) {
   return <div className={perfil?'crm-shell':'crm-inicial'}>
     {perfil&&<MenuLateral perfil={perfil} aba={aba} navegar={navegar} resumo={central.resumo} foto={conta?.user_metadata?.foto_perfil}/>}
     <main className="crm-conteudo">
-    <header><div><span className="brand">Retenção de Frota</span><h1>{aba==='Distribuição'?'Distribuir casos':aba==='Lotes'?'Histórico de lotes':aba}</h1></div><div className="toolbar">{central.resumo?.semana&&<span className="pill">Base · {central.resumo.semana}</span>}<button className="abrir-perfil" onClick={()=>navegar('Perfil')} aria-label="Abrir meu perfil"><Avatar foto={conta?.user_metadata?.foto_perfil} nome={perfil?.nome||conta?.user_metadata?.nome}/><span>Meu perfil</span></button></div></header>
+    <header><div><span className="brand">Retenção de Frota</span><h1>{aba==='Distribuição'?'Distribuir casos':aba==='Lotes'?'Histórico de lotes':aba==='Novidades'?'Notificações':aba}</h1></div><div className="toolbar">{central.resumo?.semana&&<span className="pill">Base · {central.resumo.semana}</span>}<button className="abrir-perfil" onClick={()=>navegar('Perfil')} aria-label="Abrir meu perfil"><Avatar foto={conta?.user_metadata?.foto_perfil} nome={perfil?.nome||conta?.user_metadata?.nome}/><span>Meu perfil</span></button></div></header>
     {erro && <p className="erro" role="alert">{erro}</p>}{aviso && <p className="aviso" role="status">{aviso}</p>}
     {pendente && <section className="panel"><h2>Conta aguardando aprovação</h2>
       <p>Peça ao supervisor para aprovar seu cadastro em Acessos.</p>
