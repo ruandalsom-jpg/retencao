@@ -3,7 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { Calendar, User } from 'lucide-react'
+import { Calendar, Star, User } from 'lucide-react'
 import { hoje, normalize } from './operacao.mjs'
 import { Avatar, PerfilUsuario } from './perfil'
 import { MeuDia, PainelAtendimentos } from './atendimentos'
@@ -14,7 +14,8 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 const db = url && key ? createClient(url, key) : null
 const etapas = { novo:'Novos casos', em_contato:'Em contato', aguardando:'Aguardando retorno', recuperado:'Recuperados', encerrado:'Encerrados' }
-const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato,nome_entregador:dados_origem->>NomeDriver'
+const selecaoCampos = 'id,entregador_id,praca,semana_entrada,motivo,prioridade,responsavel_id,aberto,etapa,proximo_contato,nome_entregador:dados_origem->>NomeDriver,destaque:dados_origem->>Destaque'
+const emDestaque = item => item?.destaque === 'true' || item?.destaque === true || item?.dados_origem?.Destaque === true || item?.dados_origem?.Destaque === 'true'
 const limiteLista = 20
 const limiteKanban = 20
 const etapasAbertas = Object.keys(etapas).slice(0, 3)
@@ -152,6 +153,7 @@ function CRM({usuario,conta}) {
   const [responsavelGestao,setResponsavelGestao]=useState('')
   const [recorteLote,setRecorteLote]=useState(null)
   const [soNovos,setSoNovos]=useState(false)
+  const [soDestaque,setSoDestaque]=useState(false)
   const campos=selecaoCampos+(central.pronto?',ultima_semana,prioridade_atual,atribuido_em,visto_em':'')
   const centralAberta=['Distribuição','Novidades','Lotes','Perfil','Meu dia'].includes(aba)
   useEffect(()=>{
@@ -225,6 +227,7 @@ function CRM({usuario,conta}) {
       if (praca.trim()) consulta=consulta.ilike('praca','%'+praca.trim()+'%')
       if (semana) consulta=consulta.eq('semana_entrada',semana)
       if (supervisor && filtro) consulta=filtro==='livre'?consulta.is('responsavel_id',null):consulta.eq('responsavel_id',filtro)
+      if(aba==='Carteira' && soDestaque)consulta=consulta.eq('dados_origem->>Destaque','true')
       if(central.pronto && aba==='Carteira'){
         // Order in the database, before pagination: unseen assignments always lead.
         // Unassigned cases also have visto_em=null, so atribuido_em must put nulls last.
@@ -253,7 +256,7 @@ function CRM({usuario,conta}) {
       .catch(e=>{if(ativo)setErro(e.message)})
       .finally(()=>{if(ativo)setCarregando(false)})
     return ()=>{ativo=false}
-  },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos,visao,busca,prioridade,etapaFiltro,central.pronto,recorteLote,soNovos,usuario])
+  },[perfil,aba,paginas,semana,praca,filtro,versao,supervisor,recorteRetornos,visao,busca,prioridade,etapaFiltro,central.pronto,recorteLote,soNovos,soDestaque,usuario])
 
   useEffect(()=>{
     if (!supervisor || aba!=='Dashboard') return
@@ -290,8 +293,26 @@ function CRM({usuario,conta}) {
 
   const exibidas=colunas.filter(c=>c.aba===aba && c.visao===visao)
   function recorte() { setPaginas({});setIds([]);setErro('');setAviso('');setDetalhe(null) }
-  function navegar(novaAba){setResponsavelGestao('');setAba(novaAba);setRecorteLote(null);setSoNovos(false);recorte()}
-  function abrirRecorte(selecao){setRecorteLote(selecao);setSoNovos(false);setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setVisao('lista');setAba('Carteira');recorte()}
+  function navegar(novaAba){setResponsavelGestao('');setAba(novaAba);setRecorteLote(null);setSoNovos(false);setSoDestaque(false);recorte()}
+  function abrirRecorte(selecao){setRecorteLote(selecao);setSoNovos(false);setSoDestaque(false);setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setVisao('lista');setAba('Carteira');recorte()}
+  async function alternarDestaque(caso) {
+    if (ocupado) return
+    const proximo=!emDestaque(caso)
+    setOcupado(true);setErro('');setAviso('')
+    try {
+      const {error}=await db.rpc('alternar_destaque',{p_id:caso.id,p_destaque:proximo})
+      if (error) {
+        if (error.code==='PGRST202') throw Error('Execute o SQL Ativar-Destaque-Caso.sql no Supabase para liberar o destaque.')
+        throw error
+      }
+      setDetalhe(atual=>atual?.caso.id===caso.id
+        ? {...atual,caso:{...atual.caso,destaque:proximo,dados_origem:{...(atual.caso.dados_origem||{}),Destaque:proximo}}}
+        : atual)
+      reler(v=>v+1)
+      setAviso(proximo?'Entregador colocado em destaque.':'Destaque removido.')
+    } catch(e) {setErro(e.message)}
+    finally {setOcupado(false)}
+  }
   async function salvar(funcao, parametros, mensagem) {
     if (ocupado) return
     setOcupado(true);setErro('');setAviso('')
@@ -366,7 +387,10 @@ function CRM({usuario,conta}) {
         <button onClick={()=>{setSemana('');setPraca('');setFiltro('');setBusca('');setPrioridade('');setEtapaFiltro('');setRecorteRetornos('todos');recorte()}}>Limpar filtros</button>
       </section>}
       {aba==='Carteira'&&recorteLote&&<div className="panel toolbar"><span>Recorte: <b>{recorteLote.titulo}</b></span><button onClick={()=>{setRecorteLote(null);recorte()}}>Ver toda a carteira</button><small>Exibe os casos que você ainda pode acessar.</small></div>}
-      {aba==='Carteira'&&central.pronto&&<label className="filtro-novos"><input type="checkbox" checked={soNovos} onChange={e=>{setSoNovos(e.target.checked);recorte()}}/> Novos para mim · ainda não abertos ({central.resumo?.novos||0})</label>}
+      {aba==='Carteira'&&<div className="toolbar filtros-rapidos">
+        {central.pronto&&<label className="filtro-novos"><input type="checkbox" checked={soNovos} onChange={e=>{setSoNovos(e.target.checked);recorte()}}/> Novos para mim · ainda não abertos ({central.resumo?.novos||0})</label>}
+        <label className="filtro-novos filtro-destaque"><input type="checkbox" checked={soDestaque} onChange={e=>{setSoDestaque(e.target.checked);recorte()}}/> ★ Apenas em destaque</label>
+      </div>}
       {aba==='Carteira' && <div className="toolbar visualizacao" aria-label="Visualização da carteira">
         {['lista','kanban'].map(v=><button key={v} aria-pressed={visao===v} onClick={()=>{setVisao(v);recorte()}}>{v==='lista'?'Lista':'Kanban'}</button>)}
       </div>}
@@ -409,8 +433,9 @@ function CRM({usuario,conta}) {
           </tr></thead><tbody>{c.casos.map(item=>{
             const atual=item.evolucao_semanal?.[0]
             const tendencia=tendenciaSemanal(item.evolucao_semanal)
+            const destacado=emDestaque(item)
             const nome=equipe.find(p=>p.id===item.responsavel_id)?.nome || (item.responsavel_id===usuario?perfil.nome:item.responsavel_id?'Atribuído':'Sem responsável')
-            return <tr key={item.id} className={'caso-linha'+(tendencia?' tendencia-linha-'+tendencia:'')} onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{item.nome_entregador&&<small className="block">{item.nome_entregador}</small>}{tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora':'▼ Piora'}</span>}{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
+            return <tr key={item.id} className={'caso-linha'+(destacado?' tendencia-linha-destaque':tendencia?' tendencia-linha-'+tendencia:'')} onClick={()=>abrir(item)}><th scope="row"><button className="caso-link" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}}>{item.id.slice(0,12)}</button>{item.nome_entregador&&<small className="block">{item.nome_entregador}</small>}{destacado&&<span className="badge badge-destaque">★ Destaque</span>}{tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora':'▼ Piora'}</span>}{central.pronto&&item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo para o responsável</span>}</th>
               <td>{item.semana_entrada}</td><td>{item.praca}{item.subpraca && <small className="block">{item.subpraca}</small>}</td><td>{item.motivo}</td>
               <td><Badge valor={item.prioridade}/></td><td><Badge valor={etapas[item.etapa]}/></td><td>{nome}</td><td>{dataBR(item.proximo_contato)}</td>
               <td>{item.ultima_semana||atual?.semana || '—'}</td><td><Badge valor={item.prioridade_atual||atual?.prioridade}/></td><td>{item.atribuido_em?new Date(item.atribuido_em).toLocaleDateString('pt-BR'):'—'}</td>
@@ -429,7 +454,7 @@ function CRM({usuario,conta}) {
               {detalhe.carregando ? <p role="status">Carregando dados e histórico…</p> :
                 <><p role="alert">{detalhe.erro}</p><button onClick={()=>abrir(detalhe.caso)}>Tentar novamente</button></>}
             </section>
-          : <Detalhe {...detalhe} ocupado={ocupado} salvar={salvar}/>}
+          : <Detalhe {...detalhe} ocupado={ocupado} salvar={salvar} alternarDestaque={alternarDestaque}/>}
       </PainelCaso>}
     </>}
   </main></div>
@@ -473,12 +498,13 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
       <div className="kanban-col-body">
         {c.casos.map(item=>{
           const tendencia=tendenciaSemanal(item.evolucao_semanal)
+          const destacado=emDestaque(item)
           const prio=item.prioridade_atual||item.prioridade||'—'
           const prioChave=normalize(prio).replace(/[^a-z0-9]+/g,'-')
           const responsavel=nomeResponsavel(item.responsavel_id)
           const semDono=responsavel==='Sem responsável'
           const prazoSituacao=item.proximo_contato?(item.proximo_contato<hoje()?'vencido':item.proximo_contato===hoje()?'hoje':'agendado'):''
-          return <article key={item.id} className={'kanban-card'+(tendencia?' neon-'+tendencia:'')}
+          return <article key={item.id} className={'kanban-card'+(destacado?' neon-destaque':tendencia?' neon-'+tendencia:'')}
             data-arrastando={arrastado?.id===item.id}
             draggable={item.aberto&&!ocupado}
             onClick={()=>{if(!ocupado)abrir(item)}}
@@ -490,6 +516,7 @@ function Kanban({colunas,ocupado,abrir,nomeResponsavel,mover,mudarPagina}) {
             <div className="kanban-card-topo">
               <button type="button" className="kanban-abrir kanban-caso-id" disabled={ocupado} onClick={e=>{e.stopPropagation();abrir(item)}} aria-label={'Abrir caso '+item.id}>{item.id.slice(0,12)}</button>
               <div className="kanban-card-flags">
+                {destacado&&<span className="badge badge-destaque">★ Destaque</span>}
                 {tendencia&&<span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora':'▼ Piora'}</span>}
                 {item.atribuido_em&&!item.visto_em&&<span className="badge badge-recuperados">Novo</span>}
               </div>
@@ -524,11 +551,12 @@ function Paginacao({coluna,mudar}) {
   </div>
 }
 
-function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
+function Detalhe({caso,contatos,evolucao,ocupado,salvar,alternarDestaque}) {
   const [acao,setAcao]=useState('manter')
   const [copiaNumero,setCopiaNumero]=useState('')
   const ultima=evolucao[0]
   const tendencia=tendenciaSemanal(evolucao)
+  const destacado=emDestaque(caso)
   const ind=ultima?.indicadores
   const origem=caso.dados_origem || {}
   const bruto=String(ind?.dados_origem?.Celular || origem.Celular || '').replace(/[^0-9]/g,'')
@@ -545,11 +573,19 @@ function Detalhe({caso,contatos,evolucao,ocupado,salvar}) {
     }
   }
   return <section className="panel">
-    <div className={'caso-diagnostico'+(tendencia?' neon-'+tendencia:'')}><small>{caso.id} · Entrada {caso.semana_entrada}</small>
-    <h2>{origem.NomeDriver || caso.nome_entregador || ind?.motivo || caso.motivo}</h2>
-    {(origem.NomeDriver || caso.nome_entregador) && <p>{ind?.motivo || caso.motivo}</p>}
-    <Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>{tendencia&&<> <span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora na última semana':'▼ Piora na última semana'}</span></>}
-    {Number(ind?.semanas_inativo)>0 && <p>{indicador(ind.semanas_inativo,'semanas_inativo')} semana(s) sem produção</p>}</div>
+    <div className={'caso-diagnostico'+(destacado?' neon-destaque':tendencia?' neon-'+tendencia:'')}>
+      <div className="diagnostico-topo">
+        <small>{caso.id} · Entrada {caso.semana_entrada}</small>
+        <button type="button" className={'btn-destaque'+(destacado?' ativo':'')} disabled={ocupado} onClick={()=>alternarDestaque(caso)}>
+          <Star size={14} fill={destacado?'currentColor':'none'} aria-hidden="true"/>
+          {destacado?'Em destaque · acompanhamento preciso':'Destacar entregador'}
+        </button>
+      </div>
+      <h2>{origem.NomeDriver || caso.nome_entregador || ind?.motivo || caso.motivo}</h2>
+      {(origem.NomeDriver || caso.nome_entregador) && <p>{ind?.motivo || caso.motivo}</p>}
+      <Badge valor={ultima?.prioridade || caso.prioridade}/> <Badge valor={etapas[caso.etapa]}/>{destacado&&<> <span className="badge badge-destaque">★ Em destaque</span></>}{tendencia&&<> <span className={'badge badge-tendencia-'+tendencia}>{tendencia==='melhora'?'▲ Melhora na última semana':'▼ Piora na última semana'}</span></>}
+      {Number(ind?.semanas_inativo)>0 && <p>{indicador(ind.semanas_inativo,'semanas_inativo')} semana(s) sem produção</p>}
+    </div>
     <h3>Identificação e contexto</h3>
     <dl className="dados-driver">
       {[['Entregador',origem.NomeDriver || caso.nome_entregador],['UUID',caso.entregador_id],['Praça',caso.praca],['Subpraça',origem['Subpraça Principal']],['Próximo contato',dataBR(caso.proximo_contato)]].map(([rotulo,valor])=><div key={rotulo}><dt>{rotulo}</dt><dd>{valor || '—'}</dd></div>)}

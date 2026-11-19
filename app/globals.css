@@ -236,3 +236,34 @@ main>.aviso{position:fixed;right:20px;bottom:64px;z-index:5;max-width:calc(100vw
 .kanban-entrada{font-size:10.5px;color:var(--secundario);white-space:nowrap}
 .kanban-col .toolbar{gap:5px;justify-content:center;padding-top:4px}
 .kanban-col .toolbar button{background:var(--card-select);color:var(--card-select-texto);border:1px solid var(--card-select-borda);font-size:12px;padding:5px 9px}
+
+/* Destaque neon para acompanhamento prioritario */
+@keyframes pulso-neon-destaque{
+  0%,100%{box-shadow:0 0 0 1.5px #06b6d4,0 0 12px #06b6d470,inset 0 0 8px #22d3ee24}
+  50%{box-shadow:0 0 0 2px #22d3ee,0 0 22px #22d3eeaa,inset 0 0 12px #22d3ee3d}
+}
+.kanban-col .kanban-card.neon-destaque,.caso-diagnostico.neon-destaque{
+  border-color:#06b6d4;
+  animation:pulso-neon-destaque 2.2s ease-in-out infinite;
+}
+:root[data-tema=escuro] .kanban-col .kanban-card.neon-destaque,:root[data-tema=escuro] .caso-diagnostico.neon-destaque{
+  border-color:#22d3ee;
+}
+.badge-destaque{background:#cffafe;color:#0e7490;border:1px solid #22d3ee;font-weight:700;box-shadow:0 0 8px #06b6d438}
+:root[data-tema=escuro] .badge-destaque{background:#083344;color:#67e8f9;border-color:#22d3ee;box-shadow:0 0 10px #22d3ee55}
+.carteira-lista tr.tendencia-linha-destaque th:first-child{box-shadow:inset 4px 0 0 #06b6d4}
+.diagnostico-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.btn-destaque{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--borda-campo);background:var(--superficie);color:var(--texto);transition:all .18s}
+.btn-destaque:hover:not(:disabled){border-color:#06b6d4;color:#0e7490;box-shadow:0 0 10px #06b6d433}
+.btn-destaque.ativo{background:#06b6d4;border-color:#22d3ee;color:#042f2e;font-weight:700;box-shadow:0 0 14px #06b6d480}
+.btn-destaque.ativo:hover:not(:disabled){background:#0891b2;border-color:#67e8f9;color:#ffffff}
+:root[data-tema=escuro] .btn-destaque:hover:not(:disabled){border-color:#22d3ee;color:#67e8f9;box-shadow:0 0 12px #22d3ee44}
+:root[data-tema=escuro] .btn-destaque.ativo{background:#083344;border-color:#22d3ee;color:#67e8f9;box-shadow:0 0 16px #22d3ee80}
+:root[data-tema=escuro] .btn-destaque.ativo:hover:not(:disabled){background:#0e4f68;border-color:#67e8f9;color:#cffafe}
+.filtros-rapidos{gap:18px;margin:12px 0}
+.filtros-rapidos .filtro-novos{margin:0}
+.filtro-destaque{color:#0e7490;font-weight:600}
+:root[data-tema=escuro] .filtro-destaque{color:#67e8f9}
+@media(prefers-reduced-motion:reduce){
+  .kanban-col .kanban-card.neon-destaque,.caso-diagnostico.neon-destaque{animation:none}
+}
